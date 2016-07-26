@@ -72,7 +72,7 @@ int gui_getlineboxcursor() {
 
 int gui_setlineboxcursor(int linebox_curpos) {
 	if (__guistate_cache == NULL) return -1;
-	size_t cl = strlen(__guistate_cache->lb_curpos);
+	size_t cl = __guistate_cache->lineboxes[__guistate_cache->focused_lb] == NULL ? 0 : strlen(__guistate_cache->lineboxes[__guistate_cache->focused_lb]->text);
 	if (linebox_curpos < 0) linebox_curpos = 0;
 	else if (linebox_curpos > cl) {
 		linebox_curpos = cl;
@@ -157,44 +157,46 @@ void __gui_keyboardCallback(GLFWwindow* window, int key, int scancode, int actio
 	if (__guistate_cache != NULL) {
 		if (__guistate_cache->linebox_count > 0 && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
 			struct gui_linebox* lb = __guistate_cache->lineboxes[__guistate_cache->focused_lb];
-			if (key == GLFW_KEY_BACKSPACE) {
-				size_t tl = strlen(lb->text);
-				if (__guistate_cache->lb_curpos > 0) {
-					memmove(lb->text + __guistate_cache->lb_curpos - 1, lb->text + __guistate_cache->lb_curpos, tl - __guistate_cache->lb_curpos + 1);
+			if (lb != NULL) {
+				if (key == GLFW_KEY_BACKSPACE) {
+					size_t tl = strlen(lb->text);
+					if (__guistate_cache->lb_curpos > 0) {
+						memmove(lb->text + __guistate_cache->lb_curpos - 1, lb->text + __guistate_cache->lb_curpos, tl - __guistate_cache->lb_curpos + 1);
+						__guistate_cache->lb_curpos--;
+					}
+				} else if (key == GLFW_KEY_DELETE) {
+					size_t tl = strlen(lb->text);
+					if (__guistate_cache->lb_curpos < tl) {
+						memmove(lb->text + __guistate_cache->lb_curpos, lb->text + __guistate_cache->lb_curpos + 1, tl - __guistate_cache->lb_curpos);
+					}
+				} else if (key == GLFW_KEY_LEFT) {
 					__guistate_cache->lb_curpos--;
-				}
-			} else if (key == GLFW_KEY_DELETE) {
-				size_t tl = strlen(lb->text);
-				if (__guistate_cache->lb_curpos < tl) {
-					memmove(lb->text + __guistate_cache->lb_curpos, lb->text + __guistate_cache->lb_curpos + 1, tl - __guistate_cache->lb_curpos);
-				}
-			} else if (key == GLFW_KEY_LEFT) {
-				__guistate_cache->lb_curpos--;
-				if (__guistate_cache->lb_curpos < 0) __guistate_cache->lb_curpos = 0;
-			} else if (key == GLFW_KEY_RIGHT) {
-				__guistate_cache->lb_curpos++;
-				if (__guistate_cache->lb_curpos > strlen(lb->text)) __guistate_cache->lb_curpos--;
-			} else if (key == GLFW_KEY_HOME) {
-				__guistate_cache->lb_curpos = 0;
-			} else if (key == GLFW_KEY_END) {
-				__guistate_cache->lb_curpos = strlen(lb->text);
-			} else if (key == GLFW_KEY_ENTER) {
-				(__guistate_cache->button)(lb->action, mods, -1., -1.);
-			} else if (key == GLFW_KEY_V && (mods & GLFW_MOD_CONTROL)) {
-				size_t tl = strlen(lb->text);
-				const char* ins = glfwGetClipboardString(window);
-				if (ins != NULL) {
-					size_t insl = strlen(ins);
-					if (tl + insl < 256) {
-						if (__guistate_cache->lb_curpos == tl) {
-							memcpy(lb->text + __guistate_cache->lb_curpos, ins, insl);
-							lb->text[tl + insl] = 0;
-						} else if (__guistate_cache->lb_curpos < tl) {
-							memmove(lb->text + __guistate_cache->lb_curpos + insl, lb->text + __guistate_cache->lb_curpos, tl - __guistate_cache->lb_curpos);
-							memcpy(lb->text + __guistate_cache->lb_curpos, ins, insl);
-							lb->text[tl + insl + 1] = 0;
+					if (__guistate_cache->lb_curpos < 0) __guistate_cache->lb_curpos = 0;
+				} else if (key == GLFW_KEY_RIGHT) {
+					__guistate_cache->lb_curpos++;
+					if (__guistate_cache->lb_curpos > strlen(lb->text)) __guistate_cache->lb_curpos--;
+				} else if (key == GLFW_KEY_HOME) {
+					__guistate_cache->lb_curpos = 0;
+				} else if (key == GLFW_KEY_END) {
+					__guistate_cache->lb_curpos = strlen(lb->text);
+				} else if (key == GLFW_KEY_ENTER) {
+					(__guistate_cache->button)(lb->action, mods, -1., -1.);
+				} else if (key == GLFW_KEY_V && (mods & GLFW_MOD_CONTROL)) {
+					size_t tl = strlen(lb->text);
+					const char* ins = glfwGetClipboardString(window);
+					if (ins != NULL) {
+						size_t insl = strlen(ins);
+						if (tl + insl < 256) {
+							if (__guistate_cache->lb_curpos == tl) {
+								memcpy(lb->text + __guistate_cache->lb_curpos, ins, insl);
+								lb->text[tl + insl] = 0;
+							} else if (__guistate_cache->lb_curpos < tl) {
+								memmove(lb->text + __guistate_cache->lb_curpos + insl, lb->text + __guistate_cache->lb_curpos, tl - __guistate_cache->lb_curpos);
+								memcpy(lb->text + __guistate_cache->lb_curpos, ins, insl);
+								lb->text[tl + insl + 1] = 0;
+							}
+							__guistate_cache->lb_curpos += insl;
 						}
-						__guistate_cache->lb_curpos += insl;
 					}
 				}
 			}
