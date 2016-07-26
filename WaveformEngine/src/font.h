@@ -1,0 +1,22 @@
+/*
+ * font.h
+ *
+ *  Created on: Jul 25, 2016
+ *      Author: root
+ */
+
+#ifndef FONT_H_
+#define FONT_H_
+
+#include <stdlib.h>
+#include <stdint.h>
+
+void drawChar(char c, int italic);
+
+void drawString(char* str, int x, int y, uint32_t color);
+
+size_t stringWidth(char* str);
+
+void trimStringToWidth(char* str, size_t width);
+
+#endif /* FONT_H_ */

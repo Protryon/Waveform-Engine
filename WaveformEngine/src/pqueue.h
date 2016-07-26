@@ -18,14 +18,11 @@ struct __pqueue_entry {
 struct pqueue {
 		size_t size;
 		size_t capacity;
-		size_t start;
 		size_t end;
 		size_t rc;
 		struct __pqueue_entry* data;
 		pthread_mutex_t data_mutex;
-		pthread_mutex_t in_mutex;
 		pthread_cond_t in_cond;
-		pthread_mutex_t out_mutex;
 		pthread_cond_t out_cond;
 		int mt;
 };

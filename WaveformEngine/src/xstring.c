@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "smem.h"
 
 char* trim(char* str) {
 	if (str == NULL) return NULL;
@@ -183,7 +184,7 @@ char* urlencode(char* str) {
 		char c = str[i];
 		if (c == '\"' || c == '#' || c == '$' || c == '%' || c == '&' || c == '+' || c == '-' || c == ',' || c == '/' || c == ':' || c == ';' || c == '=' || c == '?' || c == '@' || c == ' ' || c == '\t' || c == '>' || c == '<' || c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '~' || c == '[' || c == ']' || c == '`') {
 			sl += 3;
-			str = realloc(str, sl + 1);
+			str = srealloc(str, sl + 1);
 			str[sl] = 0;
 			memmove(str + i + 3, str + i + 1, sl - i);
 			char sc[4];
@@ -213,7 +214,7 @@ char* replace(char* str, char* from, char* to) {
 					memmove(str + i + tl - fl + 1, str + i + fl - fl + 1, sl - i - fl + 1 + 1);
 				} else {
 					sl += (tl - fl);
-					str = realloc(str, sl);
+					str = srealloc(str, sl);
 					memmove(str + i + tl - fl - 1, str + i - 1, sl - i + 1 + 1);
 					memcpy(str + i - fl + 1, to, tl);
 				}
@@ -243,7 +244,7 @@ char* replace_nocase(char* str, char* from, char* to) {
 					memmove(str + i + tl - fl + 1, str + i + fl - fl + 1, sl - i - fl + 1 + 1);
 				} else {
 					sl += (tl - fl);
-					str = realloc(str, sl);
+					str = srealloc(str, sl);
 					memmove(str + i + tl - fl - 1, str + i - 1, sl - i + 1 + 1);
 					memcpy(str + i - fl + 1, to, tl);
 				}

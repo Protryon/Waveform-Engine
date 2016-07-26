@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include "smem.h"
 
 char* __readJSONString(char* json, size_t* i) {
 	int cs = 0;
@@ -28,9 +29,9 @@ char* __readJSONString(char* json, size_t* i) {
 				(*i)++;
 				if (*i >= sl) continue;
 				if (ret == NULL) {
-					ret = malloc(2);
+					ret = smalloc(2);
 					rs = 0;
-				} else ret = realloc(ret, rs + 2);
+				} else ret = srealloc(ret, rs + 2);
 				if (json[*i] == '\"') ret[rs++] = '\"';
 				else if (json[*i] == '\\') ret[rs++] = '\\';
 				else if (json[*i] == '/') ret[rs++] = '/';
@@ -48,9 +49,9 @@ char* __readJSONString(char* json, size_t* i) {
 				uce: ;
 			}
 			if (ret == NULL) {
-				ret = malloc(2);
+				ret = smalloc(2);
 				rs = 0;
-			} else ret = realloc(ret, rs + 2);
+			} else ret = srealloc(ret, rs + 2);
 			ret[rs++] = json[*i];
 			ret[rs] = 0;
 		}
@@ -89,7 +90,7 @@ int __readJSONValue(char* json, size_t* i, struct json_object* into) {
 						cs = 1;
 					}
 				} else if (cs == 1) {
-					struct json_object* sj = malloc(sizeof(struct json_object));
+					struct json_object* sj = smalloc(sizeof(struct json_object));
 					sj->name = NULL;
 					if (__readJSONValue(json, i, sj)) {
 						free(sj);
@@ -101,9 +102,9 @@ int __readJSONValue(char* json, size_t* i, struct json_object* into) {
 					} else {
 						if (into->children == NULL) {
 							into->child_count = 0;
-							into->children = malloc(sizeof(struct json_object*));
+							into->children = smalloc(sizeof(struct json_object*));
 						} else {
-							into->children = realloc(into->children, sizeof(struct json_object*) * (into->child_count + 1));
+							into->children = srealloc(into->children, sizeof(struct json_object*) * (into->child_count + 1));
 						}
 						into->children[into->child_count++] = sj;
 						cs = 2;
@@ -140,7 +141,7 @@ int __recurJSON(struct json_object* cur, size_t* i, char* json) {
 		} else if (cs == 1) {
 			if (json[*i] == '}') break;
 			else if (json[*i] == '\"') {
-				nchild = malloc(sizeof(struct json_object));
+				nchild = smalloc(sizeof(struct json_object));
 				memset(nchild, 0, sizeof(struct json_object));
 				nchild->name = __readJSONString(json, i);
 				if (nchild->name == NULL) {
@@ -160,9 +161,9 @@ int __recurJSON(struct json_object* cur, size_t* i, char* json) {
 			}
 			if (cur->children == NULL) {
 				cur->child_count = 0;
-				cur->children = malloc(sizeof(struct json_object*));
+				cur->children = smalloc(sizeof(struct json_object*));
 			} else {
-				cur->children = realloc(cur->children, sizeof(struct json_object*) * (cur->child_count + 1));
+				cur->children = srealloc(cur->children, sizeof(struct json_object*) * (cur->child_count + 1));
 			}
 			cur->children[cur->child_count++] = nchild;
 			nchild = NULL;

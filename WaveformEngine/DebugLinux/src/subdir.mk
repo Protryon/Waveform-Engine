@@ -4,13 +4,46 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../src/main.c 
+../src/font.c \
+../src/glew.c \
+../src/gui.c \
+../src/json.c \
+../src/main.c \
+../src/pqueue.c \
+../src/queue.c \
+../src/render.c \
+../src/smem.c \
+../src/vector.c \
+../src/waveform.c \
+../src/xstring.c 
 
 OBJS += \
-./src/main.o 
+./src/font.o \
+./src/glew.o \
+./src/gui.o \
+./src/json.o \
+./src/main.o \
+./src/pqueue.o \
+./src/queue.o \
+./src/render.o \
+./src/smem.o \
+./src/vector.o \
+./src/waveform.o \
+./src/xstring.o 
 
 C_DEPS += \
-./src/main.d 
+./src/font.d \
+./src/glew.d \
+./src/gui.d \
+./src/json.d \
+./src/main.d \
+./src/pqueue.d \
+./src/queue.d \
+./src/render.d \
+./src/smem.d \
+./src/vector.d \
+./src/waveform.d \
+./src/xstring.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes

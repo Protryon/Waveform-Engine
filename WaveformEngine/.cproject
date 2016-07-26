@@ -95,7 +95,7 @@
 								<option id="gnu.c.compiler.exe.debug.option.debugging.level.1704629860" name="Debug Level" superClass="gnu.c.compiler.exe.debug.option.debugging.level" value="gnu.c.debugging.level.max" valueType="enumerated"/>
 								<option id="gnu.c.compiler.option.dialect.std.833058622" name="Language standard" superClass="gnu.c.compiler.option.dialect.std" value="gnu.c.compiler.dialect.default" valueType="enumerated"/>
 								<option id="gnu.c.compiler.option.dialect.flags.1457175934" name="Other dialect flags" superClass="gnu.c.compiler.option.dialect.flags" value="-std=gnu11" valueType="string"/>
-								<option id="gnu.c.compiler.option.include.files.1838762736" name="Include files (-include)" superClass="gnu.c.compiler.option.include.files" valueType="includeFiles"/>
+								<option id="gnu.c.compiler.option.include.files.1838762736" name="Include files (-include)" superClass="gnu.c.compiler.option.include.files"/>
 								<option id="gnu.c.compiler.option.include.paths.1562802371" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" valueType="includePath">
 									<listOptionValue builtIn="false" value="/mingw/include"/>
 								</option>
@@ -105,7 +105,6 @@
 							<tool command="i686-w64-mingw32-gcc" id="cdt.managedbuild.tool.gnu.c.linker.exe.debug.303266345" name="GCC C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.exe.debug">
 								<option id="gnu.c.link.option.libs.403990194" name="Libraries (-l)" superClass="gnu.c.link.option.libs" valueType="libs">
 									<listOptionValue builtIn="false" value="z"/>
-									<listOptionValue builtIn="false" value="glew32"/>
 									<listOptionValue builtIn="false" value=":libglfw3.a"/>
 									<listOptionValue builtIn="false" value="opengl32"/>
 									<listOptionValue builtIn="false" value="glu32"/>
