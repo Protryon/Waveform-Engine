@@ -13,8 +13,10 @@ C_SRCS += \
 ../src/queue.c \
 ../src/render.c \
 ../src/smem.c \
+../src/streams.c \
 ../src/vector.c \
 ../src/waveform.c \
+../src/wincompat.c \
 ../src/xstring.c 
 
 OBJS += \
@@ -27,8 +29,10 @@ OBJS += \
 ./src/queue.o \
 ./src/render.o \
 ./src/smem.o \
+./src/streams.o \
 ./src/vector.o \
 ./src/waveform.o \
+./src/wincompat.o \
 ./src/xstring.o 
 
 C_DEPS += \
@@ -41,8 +45,10 @@ C_DEPS += \
 ./src/queue.d \
 ./src/render.d \
 ./src/smem.d \
+./src/streams.d \
 ./src/vector.d \
 ./src/waveform.d \
+./src/wincompat.d \
 ./src/xstring.d 
 
 

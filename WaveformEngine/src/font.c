@@ -12,8 +12,11 @@
 #include <GL/glext.h>
 #include <png.h>
 #include "globals.h"
+#include "render.h"
+#include <fcntl.h>
+#include "streams.h"
+#include <errno.h>
 
-unsigned char fontColors[32][3];
 unsigned char fontWidth[256];
 int cfont = -1;
 
@@ -28,25 +31,8 @@ void setFont(int tx) {
 	cfont = tx;
 }
 
-int loadFont(char* path, int tx) {
-	for (int32_t i = 0; i < 32; i++) {
-		int32_t v6 = (i >> 3 & 1) * 85;
-		int32_t v7 = (i >> 2 & 1) * 170 + v6;
-		int32_t v8 = (i >> 1 & 1) * 170 + v6;
-		int32_t v9 = (i >> 0 & 1) * 170 + v6;
-		if (i == 6) {
-			v7 += 85;
-		}
-		if (i >= 16) {
-			v7 /= 4;
-			v8 /= 4;
-			v9 /= 4;
-		}
-		fontColors[i][0] = v7;
-		fontColors[i][1] = v8;
-		fontColors[i][2] = v9;
-	}
-	FILE* fd = fopen(path, "rb");
+int loadFont(char* fontpath, char* sizepath, int tx) {
+	FILE* fd = fopen(fontpath, "rb");
 	if (!fd) return 1;
 	png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 	if (!png) {
@@ -78,39 +64,49 @@ int loadFont(char* path, int tx) {
 	}
 	png_read_image(png, row_pointers);
 	free(row_pointers);
-	struct rpix* v4 = pngd;
-	int cw = width / 16;
-	int ch = height / 16;
-	for (int i = 0; i < 256; i++) {
-		int v10 = i % 16;
-		int v11 = i / 16;
-		if (i == 32) {
-			fontWidth[i] = 4;
-			continue;
-		}
-		int v12 = cw - 1;
-		while (1) {
-			if (v12 >= 0) {
-				int v13 = v10 * cw + v12;
-				int v14 = 1;
-				for (int v15 = 0; (v15 < ch) && v14; v15++) {
-					int v16 = (v11 * cw + v15) * width;
-					if (v4[v13 + v16].a > 0) v14 = 0;
-				}
-				if (v14) {
-					--v12;
-					continue;
-				}
-			}
-			v12++;
-			fontWidth[i] = (unsigned char) (0.5 + ((float) v12 * (8. / cw))) + 1;
-			break;
-		}
-	}
-	loadTextureData(tx, width, height, pngd, 1);
+	/*struct rpix* v4 = pngd;
+	 int cw = width / 16;
+	 int ch = height / 16;
+	 for (int i = 0; i < 256; i++) {
+	 int v10 = i % 16;
+	 int v11 = i / 16;
+	 if (i == 32) {
+	 fontWidth[i] = 4;
+	 continue;
+	 }
+	 int v12 = cw - 1;
+	 while (1) {
+	 if (v12 >= 0) {
+	 int v13 = v10 * cw + v12;
+	 int v14 = 1;
+	 for (int v15 = 0; (v15 < ch) && v14; v15++) {
+	 int v16 = (v11 * cw + v15) * width;
+	 if (v4[v13 + v16].a > 0) v14 = 0;
+	 }
+	 if (v14) {
+	 --v12;
+	 continue;
+	 }
+	 }
+	 v12++;
+	 fontWidth[i] = (unsigned char) (0.5 + ((float) v12 * (8. / cw))) + 1;
+	 break;
+	 }
+	 }*/
+	loadTextureData(tx, width, height, pngd, GL_REPEAT, GL_NEAREST);
 	free(pngd);
 	png_destroy_read_struct(&png, &info, NULL);
 	fclose(fd);
+	int fd2 = open(sizepath, O_RDONLY);
+	if (fd2 < 0) {
+		return -1;
+	}
+	int r = read(fd2, fontWidth, 256);
+	if (r < 256) {
+		close(fd2);
+		return -1;
+	}
+	close(fd2);
 	return 0;
 }
 
@@ -132,25 +128,46 @@ void drawChar(char c, int italic) {
 	glEnd();
 }
 
-void drawString(char* str, int x, int y, uint32_t color) {
+float drawChar2(char c, int italic) {
+	if (c == ' ') return 4.;
+	glBindTexture(GL_TEXTURE_2D, cfont);
+	unsigned char cwid = fontWidth[c];
+	if (cwid == 0) return 0.;
+	float k = (float) (cwid >> 4);
+	float l = (float) (cwid & 15) + 1.;
+	float j = (float) (c % 16 * 16) + k;
+	float m = (float) ((c & 255) / 16 * 16);
+	float n = l - k - .02;
+	float im = italic ? 1. : 0.;
+	glBegin (GL_TRIANGLE_STRIP);
+	glTexCoord2f(j / 256., m / 256.);
+	glVertex3f(im, 0., 0.);
+	glTexCoord2f(j / 256., (m + 15.98) / 256.);
+	glVertex3f(-im, 7.9, 0.);
+	glTexCoord2f((j + n) / 256., m / 256.);
+	glVertex3f(n / 2. + im, 0., 0.);
+	glTexCoord2f((j + n) / 256., (m + 15.98) / 256.);
+	glVertex3f(n / 2. - im, 7.99, 0.);
+	glEnd();
+	return (l - k) / 2. + 1.;
+}
+
+void drawString(char* str, float x, float y, uint32_t color) {
 	size_t sl = strlen(str);
 	//glDisable (GL_DEPTH_TEST);
 	glPushMatrix();
 	glTranslatef(x, y, 0.);
-	glPushMatrix();
+	//glPushMatrix();
 	glTranslatef(1., 1., 0.);
-	uint32_t ncolor = (color & 16579836) >> 2 | (color & -16777216);
-	glColor4f(((ncolor >> 16) & 0xff) / 255., ((ncolor >> 8) & 0xff) / 255., ((ncolor) & 0xff) / 255., 1.);
-	for (size_t i = 0; i < sl; i++) {
-		drawChar(str[i], 0);
-		glTranslatef(fontWidth[str[i]], 0., 0.);
-	}
-	glPopMatrix();
 	glColor4f(((color >> 16) & 0xff) / 255., ((color >> 8) & 0xff) / 255., ((color) & 0xff) / 255., 1.);
 	for (size_t i = 0; i < sl; i++) {
-		drawChar(str[i], 0);
-		glTranslatef(fontWidth[str[i]], 0., 0.);
+		glTranslatef(drawChar2(str[i], 0), 0., 0.);
 	}
+	//glPopMatrix();
+	//glColor4f(((color >> 16) & 0xff) / 255., ((color >> 8) & 0xff) / 255., ((color) & 0xff) / 255., 1.);
+	//for (size_t i = 0; i < sl; i++) {
+	//glTranslatef(drawChar2(str[i], 0), 0., 0.);
+	//}
 	glPopMatrix();
 	//glEnable(GL_DEPTH_TEST);
 }
@@ -159,7 +176,10 @@ size_t stringWidth(char* str) {
 	size_t sx = 0;
 	size_t sl = strlen(str);
 	for (size_t i = 0; i < sl; i++) {
-		sx += fontWidth[str[i]];
+		int cwid = fontWidth[str[i]];
+		float k = (float) (cwid >> 4);
+		float l = (float) (cwid & 15) + 1.;
+		sx += (l - k) / 2. + 1.;
 	}
 	return sx;
 }
@@ -168,7 +188,10 @@ void trimStringToWidth(char* str, size_t width) {
 	size_t sx = 0;
 	size_t sl = strlen(str);
 	for (size_t i = 0; i < sl; i++) {
-		sx += fontWidth[str[i]];
+		int cwid = fontWidth[str[i]];
+		float k = (float) (cwid >> 4);
+		float l = (float) (cwid & 15) + 1.;
+		sx += (l - k) / 2. + 1.;
 		if (sx >= width) {
 			str[i] = 0;
 			return;

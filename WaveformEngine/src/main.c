@@ -59,8 +59,8 @@ void displayCallback() {
 	clock_gettime(CLOCK_MONOTONIC, &__main_ts);
 	double ms2 = (double) __main_ts.tv_sec * 1000. + (double) __main_ts.tv_nsec / 1000000.;
 	__main_lfms = ms2;
-	while (ms2 > __main_lt + 50.) {
-		__main_lt += 50.;
+	while (ms2 > __main_lt + (1000. / (float) tps)) {
+		__main_lt += (1000. / (float) tps);
 		__gui_tick();
 	}
 	if (ms2 > __main_lf + 1000.) {
@@ -126,7 +126,7 @@ int main(int argc, char* argv[]) {
 	height = 600;
 	if (!glfwInit()) return -1;
 	glfwWindowHint(GLFW_DOUBLEBUFFER, 1);
-	glfwWindowHint(GLFW_SAMPLES, 4); // antialiasing
+	//glfwWindowHint(GLFW_SAMPLES, 4); // antialiasing
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
@@ -153,6 +153,7 @@ int main(int argc, char* argv[]) {
 	glfwSetInputMode(window, GLFW_STICKY_KEYS, 1);
 	main_init();
 	__gui_load();
+	guistate_set(0);
 	clock_gettime(CLOCK_MONOTONIC, &__main_ts);
 	__main_lt = (double) __main_ts.tv_sec * 1000. + (double) __main_ts.tv_nsec / 1000000.;
 	__main_lf = __main_lt;
