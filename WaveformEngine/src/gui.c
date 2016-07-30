@@ -41,9 +41,14 @@ struct __gui_reg {
 		void (*button)(int, int, double, double);
 		struct gui_button** buttons;
 		size_t button_count;
+		struct gui_dbutton** dbuttons;
+		size_t dbutton_count;
 		struct gui_linebox** lineboxes;
 		size_t linebox_count;
+		struct gui_dlinebox** dlineboxes;
+		size_t dlinebox_count;
 		int focused_lb;
+		int focused_dlb;
 		int lb_curpos;
 };
 
@@ -96,7 +101,7 @@ struct __gui_reg* __guistate_ensure(int index) {
 	if (index < 0) return NULL;
 	if (__guistate_regs == NULL) {
 		__guistate_regs = scalloc(sizeof(struct __gui_reg*) * (index + 1));
-		__guistate_reg_size = 0;
+		__guistate_reg_size = index + 1;
 	} else {
 		if (index >= __guistate_reg_size) {
 			__guistate_regs = srealloc(__guistate_regs, (index + 1) * sizeof(struct __gui_reg*));
@@ -108,6 +113,7 @@ struct __gui_reg* __guistate_ensure(int index) {
 	}
 	struct __gui_reg* gr = smalloc(sizeof(struct __gui_reg));
 	memset(gr, 0, sizeof(struct __gui_reg));
+	gr->focused_dlb = -1;
 	__guistate_regs[index] = gr;
 	return gr;
 }
@@ -146,7 +152,10 @@ void __gui_tick() {
 }
 
 void __gui_load() {
-	if (__guistate_cache != NULL && __guistate_cache->load != NULL) (__guistate_cache->load)();
+	for (size_t i = 0; i < __guistate_reg_size; i++) {
+		struct __gui_reg* gr = __guistate_regs[i];
+		if (gr != NULL && gr->load != NULL) (gr->load)();
+	}
 }
 
 void __gui_render(float partialTick) {
@@ -155,7 +164,7 @@ void __gui_render(float partialTick) {
 
 void __gui_keyboardCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
 	if (__guistate_cache != NULL) {
-		if (__guistate_cache->linebox_count > 0 && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+		if (__guistate_cache->linebox_count > 0 && __guistate_cache->focused_lb >= 0 && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
 			struct gui_linebox* lb = __guistate_cache->lineboxes[__guistate_cache->focused_lb];
 			if (lb != NULL) {
 				if (key == GLFW_KEY_BACKSPACE) {
@@ -200,7 +209,61 @@ void __gui_keyboardCallback(GLFWwindow* window, int key, int scancode, int actio
 					}
 				}
 			}
+		} else if (__guistate_cache->dlinebox_count > 0 && __guistate_cache->focused_dlb >= 0 && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+			struct gui_dlinebox* dlb = __guistate_cache->dlineboxes[__guistate_cache->focused_dlb];
+			if (dlb != NULL) {
+				int x;
+				int y;
+				int width;
+				int height;
+				char* text;
+				size_t text_size;
+				int action;
+				(dlb->getinfo)(&x, &y, &width, &height, &text, &text_size, &action);
+				if (key == GLFW_KEY_BACKSPACE) {
+					size_t tl = strlen(text);
+					if (__guistate_cache->lb_curpos > 0) {
+						memmove(text + __guistate_cache->lb_curpos - 1, text + __guistate_cache->lb_curpos, tl - __guistate_cache->lb_curpos + 1);
+						__guistate_cache->lb_curpos--;
+					}
+				} else if (key == GLFW_KEY_DELETE) {
+					size_t tl = strlen(text);
+					if (__guistate_cache->lb_curpos < tl) {
+						memmove(text + __guistate_cache->lb_curpos, text + __guistate_cache->lb_curpos + 1, tl - __guistate_cache->lb_curpos);
+					}
+				} else if (key == GLFW_KEY_LEFT) {
+					__guistate_cache->lb_curpos--;
+					if (__guistate_cache->lb_curpos < 0) __guistate_cache->lb_curpos = 0;
+				} else if (key == GLFW_KEY_RIGHT) {
+					__guistate_cache->lb_curpos++;
+					if (__guistate_cache->lb_curpos > strlen(text)) __guistate_cache->lb_curpos--;
+				} else if (key == GLFW_KEY_HOME) {
+					__guistate_cache->lb_curpos = 0;
+				} else if (key == GLFW_KEY_END) {
+					__guistate_cache->lb_curpos = strlen(text);
+				} else if (key == GLFW_KEY_ENTER) {
+					(__guistate_cache->button)(action, mods, -1., -1.);
+				} else if (key == GLFW_KEY_V && (mods & GLFW_MOD_CONTROL)) {
+					size_t tl = strlen(text);
+					const char* ins = glfwGetClipboardString(window);
+					if (ins != NULL) {
+						size_t insl = strlen(ins);
+						if (tl + insl < 256) {
+							if (__guistate_cache->lb_curpos == tl) {
+								memcpy(text + __guistate_cache->lb_curpos, ins, insl);
+								text[tl + insl] = 0;
+							} else if (__guistate_cache->lb_curpos < tl) {
+								memmove(text + __guistate_cache->lb_curpos + insl, text + __guistate_cache->lb_curpos, tl - __guistate_cache->lb_curpos);
+								memcpy(text + __guistate_cache->lb_curpos, ins, insl);
+								text[tl + insl + 1] = 0;
+							}
+							__guistate_cache->lb_curpos += insl;
+						}
+					}
+				}
+			}
 		}
+
 		if (__guistate_cache->keyboard != NULL) (__guistate_cache->keyboard)(key, scancode, action, mods);
 	}
 }
@@ -227,10 +290,40 @@ void __gui_mouseCallback(GLFWwindow* window, int button, int action, int mods) {
 					(__guistate_cache->button)(gb->action, mods, __gui_mx, __gui_my);
 				}
 			}
+			for (size_t i = 0; i < __guistate_cache->dbutton_count; i++) {
+				struct gui_dbutton* gb = __guistate_cache->dbuttons[i];
+				if (gb == NULL) continue;
+				int x;
+				int y;
+				int width;
+				int height;
+				int action;
+				(gb->getinfo)(&x, &y, &width, &height, &action);
+				if (x < __gui_mx && y < __gui_my && x + width > __gui_mx && y + height > __gui_my) {
+					(__guistate_cache->button)(action, mods, __gui_mx, __gui_my);
+				}
+			}
 			for (size_t i = 0; i < __guistate_cache->linebox_count; i++) {
 				struct gui_linebox* lb = __guistate_cache->lineboxes[i];
 				if (lb != NULL && lb->x < __gui_mx && lb->y < __gui_my && lb->x + lb->width > __gui_mx && lb->y + lb->height > __gui_my) {
+					__guistate_cache->focused_dlb = -1;
 					__guistate_cache->focused_lb = i;
+				}
+			}
+			for (size_t i = 0; i < __guistate_cache->dlinebox_count; i++) {
+				struct gui_dlinebox* lb = __guistate_cache->dlineboxes[i];
+				if (lb == NULL) continue;
+				int x;
+				int y;
+				int width;
+				int height;
+				char* text;
+				size_t text_size;
+				int action;
+				(lb->getinfo)(&x, &y, &width, &height, &text, &text_size, &action);
+				if (x < __gui_mx && y < __gui_my && x + width > __gui_mx && y + height > __gui_my) {
+					__guistate_cache->focused_lb = -1;
+					__guistate_cache->focused_dlb = i;
 				}
 			}
 		}
@@ -263,6 +356,19 @@ int gui_addbutton(int guistate, struct gui_button button) {
 	return gr->button_count++;
 }
 
+int gui_adddbutton(int guistate, struct gui_dbutton dbutton) {
+	struct __gui_reg* gr = __guistate_find(guistate);
+	if (gr == NULL) return -1;
+	if (gr->dbuttons == NULL) {
+		gr->dbuttons = smalloc(sizeof(struct gui_dbutton*));
+		gr->dbutton_count = 0;
+	} else gr->dbuttons = srealloc(gr->dbuttons, (gr->dbutton_count + 1) * sizeof(struct gui_dbutton*));
+	struct gui_dbutton* dup = smalloc(sizeof(struct gui_dbutton));
+	memcpy(dup, &dbutton, sizeof(struct gui_dbutton));
+	gr->dbuttons[gr->dbutton_count] = dup;
+	return gr->dbutton_count++;
+}
+
 int gui_addlinebox(int guistate, struct gui_linebox linebox) {
 	struct __gui_reg* gr = __guistate_find(guistate);
 	if (gr == NULL) return -1;
@@ -276,6 +382,19 @@ int gui_addlinebox(int guistate, struct gui_linebox linebox) {
 	return gr->linebox_count++;
 }
 
+int gui_adddlinebox(int guistate, struct gui_dlinebox dlinebox) {
+	struct __gui_reg* gr = __guistate_find(guistate);
+	if (gr == NULL) return -1;
+	if (gr->dlineboxes == NULL) {
+		gr->dlineboxes = smalloc(sizeof(struct gui_dlinebox*));
+		gr->dlinebox_count = 0;
+	} else gr->dlineboxes = srealloc(gr->dlineboxes, (gr->dlinebox_count + 1) * sizeof(struct gui_dlinebox*));
+	struct gui_dlinebox* dup = smalloc(sizeof(struct gui_dlinebox));
+	memcpy(dup, &dlinebox, sizeof(struct gui_dlinebox));
+	gr->dlineboxes[gr->dlinebox_count] = dup;
+	return gr->dlinebox_count++;
+}
+
 int gui_rembutton(int guistate, int index) {
 	struct __gui_reg* gr = __guistate_find(guistate);
 	if (gr == NULL || index < 0 || index >= gr->button_count) return -1;
@@ -284,11 +403,27 @@ int gui_rembutton(int guistate, int index) {
 	return 0;
 }
 
+int gui_remdbutton(int guistate, int index) {
+	struct __gui_reg* gr = __guistate_find(guistate);
+	if (gr == NULL || index < 0 || index >= gr->dbutton_count) return -1;
+	free(gr->dbuttons[index]);
+	gr->dbuttons[index] = NULL;
+	return 0;
+}
+
 int gui_remlinebox(int guistate, int index) { //does not free the char* in the textbox if it is in the heap!
 	struct __gui_reg* gr = __guistate_find(guistate);
 	if (gr == NULL || index < 0 || index >= gr->linebox_count) return -1;
 	free(gr->lineboxes[index]);
 	gr->lineboxes[index] = NULL;
+	return 0;
+}
+
+int gui_remdlinebox(int guistate, int index) { //does not free the char* in the textbox if it is in the heap!
+	struct __gui_reg* gr = __guistate_find(guistate);
+	if (gr == NULL || index < 0 || index >= gr->dlinebox_count) return -1;
+	free(gr->dlineboxes[index]);
+	gr->dlineboxes[index] = NULL;
 	return 0;
 }
 

@@ -19,7 +19,11 @@ struct gui_button { // in window coordinates, not opengl coordinates!
 		int y;
 		int width;
 		int height;
-		int action; // -1 sends no event
+		int action;
+};
+
+struct gui_dbutton { // in window coordinates, not opengl coordinates!
+		void (*getinfo)(int* x, int* y, int* width, int* height, int* action);
 };
 
 struct gui_linebox { // in window coordinates, not opengl coordinates!
@@ -29,7 +33,11 @@ struct gui_linebox { // in window coordinates, not opengl coordinates!
 		int height;
 		char* text;
 		size_t text_size;
-		int action; // same namespace for buttons, sent for pressing enter, -1 disables
+		int action; // same namespace for buttons, sent for pressing enter
+};
+
+struct gui_dlinebox { // in window coordinates, not opengl coordinates!
+		void (*getinfo)(int* x, int* y, int* width, int* height, char** text, size_t* text_size, int* action);
 };
 
 int gui_getselectedlinebox();
@@ -39,6 +47,39 @@ int gui_setselectedlinebox(int focused_linebox);
 void guistate_set(int gs);
 
 int guistate_get();
+
+#define guistate_register(name, args) int guistate_register_##name(int index, void (*name)args);
+
+guistate_register(render, (float))
+// partialTick
+
+guistate_register(tick, ())
+
+guistate_register(load, ())
+
+guistate_register(show, ())
+
+guistate_register(hide, ())
+
+guistate_register(keyboard, (int, int, int, int))
+// key, scancode, action, mods
+
+guistate_register(text, (unsigned int))
+// codepoint
+
+guistate_register(mousemotion, (double, double))
+// x, y
+
+guistate_register(click, (int, int, int))
+// button, action, mods
+
+guistate_register(scroll, (double, double))
+// x, y
+
+guistate_register(button, (int, int, double, double))
+// action, mods(from GLFW), mouse x, mouse y
+
+#undef guistate_register
 
 void __gui_tick();
 
@@ -67,5 +108,13 @@ int gui_addlinebox(int guistate, struct gui_linebox linebox);
 int gui_rembutton(int guistate, int index);
 
 int gui_remlinebox(int guistate, int index);
+
+int gui_adddbutton(int guistate, struct gui_dbutton dbutton);
+
+int gui_adddlinebox(int guistate, struct gui_dlinebox dlinebox);
+
+int gui_remdbutton(int guistate, int index);
+
+int gui_remdlinebox(int guistate, int index);
 
 #endif /* GUI_H_ */
