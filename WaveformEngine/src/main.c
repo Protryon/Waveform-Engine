@@ -26,6 +26,7 @@
 void main_preinit() {
 	windowTitle = "Waveform Engine";
 	frameLimit = 60;
+	tps = 60;
 }
 
 void main_init() {
