@@ -8,7 +8,7 @@
 #include "vector.h"
 #include <math.h>
 
-vec2f vec2t_add(vec2f v1, vec2f v2) {
+vec2f vec2f_add(vec2f v1, vec2f v2) {
 	vec2f v3;
 	v3.x = v1.x + v2.x;
 	v3.y = v1.y + v2.y;
@@ -23,7 +23,7 @@ vec3f vec3f_add(vec3f v1, vec3f v2) {
 	return v3;
 }
 
-vec2f vec2t_sub(vec2f v1, vec2f v2) {
+vec2f vec2f_sub(vec2f v1, vec2f v2) {
 	vec2f v3;
 	v3.x = v1.x - v2.x;
 	v3.y = v1.y - v2.y;
@@ -38,7 +38,7 @@ vec3f vec3f_sub(vec3f v1, vec3f v2) {
 	return v3;
 }
 
-vec2f vec2t_scale(vec2f v1, float f) {
+vec2f vec2f_scale(vec2f v1, float f) {
 	vec2f v3;
 	v3.x = v1.x * f;
 	v3.y = v1.y * f;
@@ -69,7 +69,7 @@ float vec3f_dot(vec3f v1, vec3f v2) {
 	return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
 }
 
-vec2f vec2t_norm(vec2f v1) {
+vec2f vec2f_norm(vec2f v1) {
 	float v1mag = vec2f_mag(v1);
 	vec2f v3;
 	v3.x = v1.x / v1mag;
@@ -100,4 +100,11 @@ vec3f vec3f_cross(vec3f v1, vec3f v2) {
 	v3.y = v1.z * v2.x - v1.x * v2.z;
 	v3.z = v1.x * v2.y - v1.y * v2.x;
 	return v3;
+}
+
+vec2f vec2f_perp(vec2f v1) {
+	vec2f v2;
+	v2.x = -v1.y;
+	v2.y = v1.x;
+	return v2;
 }

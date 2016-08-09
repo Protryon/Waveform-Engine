@@ -17,5 +17,10 @@ GLFWwindow* window;
 int frames;
 char* windowTitle;
 uint32_t frameLimit;
-
+//test
+float zoom;
+float camX;
+float camY;
+int paused;
+//endtest
 #endif /* GLOBALS_H_ */

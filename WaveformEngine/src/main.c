@@ -22,11 +22,103 @@
 #include "globals.h"
 #include <time.h>
 #include "xstring.h"
+#include "physics2.h"
 
 void main_preinit() {
 	windowTitle = "Waveform Engine";
 	frameLimit = 60;
 	tps = 60;
+}
+
+struct physics2_ctx* pctx;
+
+void test_render(float partialTick) {
+	glViewport(0, 0, width, height);
+	glMatrixMode (GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0., width * zoom, height * zoom, 0., 1000., 3000.);
+	//glOrtho(0., width, height, 0., 1000., 3000.);
+	glMatrixMode (GL_MODELVIEW);
+	glLoadIdentity();
+	glTranslatef(0., 0., -2000.);
+	//gui
+	float wzoom = width * zoom;
+	float hzoom = height * zoom;
+	glTranslatef(-camX + wzoom / 2., -camY + hzoom / 2., 0.);
+	glColor4f(1., 0., 0., 1.);
+	physics2_drawAllShapes(pctx, camX - wzoom / 2., camY - hzoom / 2., camX + wzoom / 2., camY + hzoom / 2., partialTick);
+}
+
+union physics2_shape wall1;
+union physics2_shape wall2;
+union physics2_shape wall3;
+union physics2_shape wall4;
+
+void tsim() {
+	physics2_simulate(pctx);
+	//wall1.rect->ploc.x = wall1.rect->loc.x = width / 2.;
+	//wall1.rect->ploc.y = wall1.rect->loc.y = -50;
+	//wall1.rect->width = width;
+	wall1.rect->rot = 0.;
+	wall1.rect->rps = 0.;
+	wall1.rect->vel.x = 0.;
+	wall1.rect->vel.y = 0.;
+	//wall2.rect->ploc.x = wall2.rect->loc.x = width / 2.;
+	//wall2.rect->ploc.y = wall2.rect->loc.y = height + 50.;
+	//wall2.rect->width = width;
+	wall2.rect->rot = 0.;
+	wall2.rect->rps = 0.;
+	wall2.rect->vel.x = 0.;
+	wall2.rect->vel.y = 0.;
+	//wall3.rect->ploc.x = wall3.rect->loc.x = -50.;
+	//wall3.rect->ploc.y = wall3.rect->loc.y = height / 2.;
+	//wall3.rect->height = height;
+	wall3.rect->rot = 0.;
+	wall3.rect->rps = 0.;
+	wall3.rect->vel.x = 0.;
+	wall3.rect->vel.y = 0.;
+	//wall4.rect->ploc.x = wall4.rect->loc.x = width + 50.;
+	//wall4.rect->ploc.y = wall4.rect->loc.y = height / 2.;
+	//wall4.rect->height = height;
+	wall4.rect->rot = 0.;
+	wall4.rect->rps = 0.;
+	wall4.rect->vel.x = 0.;
+	wall4.rect->vel.y = 0.;
+}
+
+int sfs;
+
+void test_tick() {
+	if (!paused) tsim();
+
+}
+
+void test_text(unsigned int c) {
+	//if (c == 'g') tsim();
+}
+
+void test_keyboard(int key, int scancode, int action, int mods) {
+	if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) paused = !paused;
+	else if (key == GLFW_KEY_S && paused && (action == GLFW_PRESS || action == GLFW_REPEAT)) tsim();
+}
+
+double lmx = 0.;
+double lmy = 0.;
+
+void test_mouseMotion(double x, double y) {
+	if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT)) {
+		double dx = lmx - x;
+		double dy = lmy - y;
+		camX += dx * zoom;
+		camY += dy * zoom;
+	}
+	lmx = x;
+	lmy = y;
+}
+
+void test_scroll(double x, double y) {
+	zoom -= y;
+	if (zoom < 1.) zoom = 1.;
 }
 
 void main_init() {
@@ -36,8 +128,86 @@ void main_init() {
 	//glEnable (GL_TEXTURE_2D);
 	//glAlphaFunc(GL_GREATER, 0.1);
 	//glEnable (GL_ALPHA_TEST);
+	zoom = 1.;
+	paused = 1;
+	camX = width / 2.;
+	camY = height / 2.;
 	glEnable (GL_CULL_FACE);
-	//load guis here via gui_register_(event)
+	//load guis here via guistate_register_<event>(event)
+	pctx = physics2_init();
+	//union physics2_shape shape = physics2_newRect(150., 100.);
+	union physics2_shape shape = physics2_newCircle(50.);
+	physics2_addShape(pctx, shape);
+	shape.rect->mass = 15000.;
+	shape.rect->ploc.x = shape.rect->loc.x = 500.;
+	shape.rect->ploc.y = shape.rect->loc.y = 500.;
+	shape.rect->vel.x = -2.;
+	shape.rect->vel.y = -2.;
+	physics2_calculateMOI(shape);
+	//shape.rect->rps = .01;
+	//shape.rect->rot = 1;
+	union physics2_shape shape2 = physics2_newRect(100., 150.);
+	//physics2_addShape(pctx, shape2);
+	shape2.rect->mass = 15000.;
+	shape2.rect->ploc.x = shape2.rect->loc.x = 300.;
+	shape2.rect->ploc.y = shape2.rect->loc.y = 200.;
+	shape2.rect->vel.x = 1.;
+	shape2.rect->vel.y = 1.;
+	physics2_calculateMOI(shape2);
+
+	union physics2_shape shape3 = physics2_newCircle(50.);
+	physics2_addShape(pctx, shape3);
+	shape3.rect->mass = 15000.;
+	shape3.rect->ploc.x = shape3.rect->loc.x = 500.;
+	shape3.rect->ploc.y = shape3.rect->loc.y = 300.;
+	shape3.rect->vel.x = 0.;
+	shape3.rect->vel.y = 2.;
+	physics2_calculateMOI(shape3);
+	vec2f pts[5];
+	pts[0].x = -75;
+	pts[0].y = -75;
+	pts[1].x = 75;
+	pts[1].y = -75;
+	pts[2].x = 90;
+	pts[2].y = 0;
+	pts[3].x = 0;
+	pts[3].y = 75;
+	pts[4].x = -90;
+	pts[4].y = 0;
+	union physics2_shape shape4 = physics2_newPoly(pts, 5);
+	physics2_addShape(pctx, shape4);
+	shape4.rect->mass = 15000.;
+	shape4.rect->ploc.x = shape4.rect->loc.x = 500.;
+	shape4.rect->ploc.y = shape4.rect->loc.y = 600.;
+	shape4.rect->vel.x = 0.;
+	shape4.rect->vel.y = -2.;
+	physics2_calculateMOI(shape4);
+	//shape2.rect->rps = .02;
+	//shape2.rect->rot = 2;
+	wall1 = physics2_newRect(width + 100., 100.);
+	//physics2_addShape(pctx, wall1);
+	wall1.rect->ploc.x = wall1.rect->loc.x = width / 2. + 100;
+	wall1.rect->ploc.y = wall1.rect->loc.y = -50 + 100;
+	wall2 = physics2_newRect(width, 100.);
+	//physics2_addShape(pctx, wall2);
+	wall2.rect->ploc.x = wall2.rect->loc.x = width / 2. + 110.;
+	wall2.rect->ploc.y = wall2.rect->loc.y = height + 50. + 200;
+	wall3 = physics2_newRect(100., height);
+	physics2_addShape(pctx, wall3);
+	wall3.rect->mass = 100. * height;
+	wall3.rect->ploc.x = wall3.rect->loc.x = -50. + 100;
+	wall3.rect->ploc.y = wall3.rect->loc.y = height / 2. + 100;
+	wall4 = physics2_newRect(100., height);
+	physics2_addShape(pctx, wall4);
+	wall4.rect->mass = 100. * height;
+	wall4.rect->ploc.x = wall4.rect->loc.x = width + 50.;
+	wall4.rect->ploc.y = wall4.rect->loc.y = height / 2. + 100;
+	guistate_register_render(0, test_render);
+	guistate_register_tick(0, test_tick);
+	guistate_register_text(0, test_text);
+	guistate_register_keyboard(0, test_keyboard);
+	guistate_register_mousemotion(0, test_mouseMotion);
+	guistate_register_scroll(0, test_scroll);
 }
 
 struct timespec __main_ts;
@@ -108,6 +278,7 @@ int main(int argc, char* argv[]) {
 	//	WSADATA wsaData;
 	//	WSAStartup(versionWanted, &wsaData);
 	//#endif
+
 	char ncwd[strlen(argv[0]) + 1];
 	memcpy(ncwd, argv[0], strlen(argv[0]) + 1);
 	char* ecwd =
