@@ -137,7 +137,7 @@ void main_init() {
 	pctx = physics2_init();
 	//union physics2_shape shape = physics2_newRect(150., 100.);
 	union physics2_shape shape = physics2_newCircle(50.);
-	physics2_addShape(pctx, shape);
+	//physics2_addShape(pctx, shape);
 	shape.rect->mass = 15000.;
 	shape.rect->ploc.x = shape.rect->loc.x = 500.;
 	shape.rect->ploc.y = shape.rect->loc.y = 500.;
@@ -156,7 +156,7 @@ void main_init() {
 	physics2_calculateMOI(shape2);
 
 	union physics2_shape shape3 = physics2_newCircle(50.);
-	physics2_addShape(pctx, shape3);
+	//physics2_addShape(pctx, shape3);
 	shape3.rect->mass = 15000.;
 	shape3.rect->ploc.x = shape3.rect->loc.x = 500.;
 	shape3.rect->ploc.y = shape3.rect->loc.y = 300.;
@@ -175,14 +175,19 @@ void main_init() {
 	pts[4].x = -90;
 	pts[4].y = 0;
 	union physics2_shape shape4 = physics2_newPoly(pts, 5);
+	//union physics2_shape shape4 = physics2_newRect(180, 150);
 	physics2_addShape(pctx, shape4);
-	shape4.rect->mass = 15000.;
+	//shape4.rect->mass = 15000.;
+	physics2_setMassByArea(shape4, 1.);
 	shape4.rect->ploc.x = shape4.rect->loc.x = 500.;
 	shape4.rect->ploc.y = shape4.rect->loc.y = 600.;
-	shape4.rect->vel.x = 0.;
-	shape4.rect->vel.y = -2.;
+	//shape4.rect->vel.x = -2.;
+	shape4.rect->vel.x = 2.;
+	shape4.rect->vel.y = -3.;
+	//shape4.rect->vel.y = -3.;
+	physics2_adjustCOM(shape4);
 	physics2_calculateMOI(shape4);
-	//shape2.rect->rps = .02;
+//shape2.rect->rps = .02;
 	//shape2.rect->rot = 2;
 	wall1 = physics2_newRect(width + 100., 100.);
 	//physics2_addShape(pctx, wall1);
@@ -194,14 +199,16 @@ void main_init() {
 	wall2.rect->ploc.y = wall2.rect->loc.y = height + 50. + 200;
 	wall3 = physics2_newRect(100., height);
 	physics2_addShape(pctx, wall3);
-	wall3.rect->mass = 100. * height;
+	physics2_setMassByArea(wall3, 10.);
 	wall3.rect->ploc.x = wall3.rect->loc.x = -50. + 100;
 	wall3.rect->ploc.y = wall3.rect->loc.y = height / 2. + 100;
+	physics2_calculateMOI(wall3);
 	wall4 = physics2_newRect(100., height);
 	physics2_addShape(pctx, wall4);
-	wall4.rect->mass = 100. * height;
+	physics2_setMassByArea(wall4, 10.);
 	wall4.rect->ploc.x = wall4.rect->loc.x = width + 50.;
 	wall4.rect->ploc.y = wall4.rect->loc.y = height / 2. + 100;
+	physics2_calculateMOI(wall4);
 	guistate_register_render(0, test_render);
 	guistate_register_tick(0, test_tick);
 	guistate_register_text(0, test_text);
@@ -298,10 +305,10 @@ int main(int argc, char* argv[]) {
 	height = 600;
 	if (!glfwInit()) return -1;
 	glfwWindowHint(GLFW_DOUBLEBUFFER, 1);
-	//glfwWindowHint(GLFW_SAMPLES, 4); // antialiasing
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+	glfwWindowHint(GLFW_SAMPLES, 4); // antialiasing
+	//glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+	//glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	//glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 	glfwSetErrorCallback(__error_callback);
 	window = glfwCreateWindow(800, 600, windowTitle, NULL, NULL);
 	if (!window) {
@@ -316,8 +323,8 @@ int main(int argc, char* argv[]) {
 		glfwTerminate();
 		return -1;
 	}
-	if (!glewIsSupported("GL_VERSION_2_1") || !glewIsSupported("GL_ARB_vertex_program")) {
-		printf("OpenGL version 2.1+ or GL_ARB_vertex_program not satisfied.\n");
+	if (!glewIsSupported("GL_VERSION_3_0") || !glewIsSupported("GL_ARB_vertex_program")) {
+		printf("OpenGL version 3.0+ or GL_ARB_vertex_program not satisfied.\n");
 		glfwTerminate();
 		return -1;
 	}

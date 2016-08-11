@@ -18,6 +18,10 @@ struct physics2_ctx {
 		union physics2_shape* shapes;
 		size_t shape_count;
 		vec2f constant_accel;
+		void (*canCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape);
+		void (*sensorCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape); // called when two objects are colliding but canCollide is 0
+		void (*preCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f);
+		void (*postCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f);
 };
 
 #define PHYSICS2_RECT 0
@@ -41,9 +45,7 @@ struct physics2_rect {
 		float elasticity;
 		float drag; // 1 = never move 0 = infinite terminal velocity
 		float rdrag;
-		vec2f p1;
-		vec2f p2;
-		vec2f p3;
+		void* data;
 		float width;
 		float height;
 };
@@ -67,6 +69,7 @@ struct physics2_circle {
 		float elasticity;
 		float drag; // 1 = never move 0 = infinite terminal velocity
 		float rdrag;
+		void* data;
 		vec2f p1;
 		vec2f p2;
 		vec2f p3;
@@ -91,6 +94,7 @@ struct physics2_poly {
 		float elasticity;
 		float drag; // 1 = never move 0 = infinite terminal velocity
 		float rdrag;
+		void* data;
 		vec2f p1;
 		vec2f p2;
 		vec2f p3;
@@ -107,6 +111,8 @@ union physics2_shape {
 		struct physics2_poly* poly;
 };
 
+void physics2_finalizeShape(union physics2_shape shape, float massMultiplier);
+
 void physics2_delShape(struct physics2_ctx* ctx, union physics2_shape shape);
 
 void physics2_addShape(struct physics2_ctx* ctx, union physics2_shape shape);
@@ -121,7 +127,13 @@ void physics2_drawAllShapes(struct physics2_ctx* ctx, float x1, float y1, float 
 
 void physics2_setMassByArea(union physics2_shape shape, float multiplier);
 
-void physics2_applyForce(union physics2_shape shape, vec2f force);
+void physics2_adjustCOM(union physics2_shape shape);
+
+void physics2_applyForce(union physics2_shape shape, vec2f force, vec2f loc);
+
+void physics2_teleport(union physics2_shape shape, vec2f loc);
+
+void physics2_teleportRot(union physics2_shape shape, float rot);
 
 vec2f physics2_getInterpolatedPosition(union physics2_shape shape, float partialTick);
 

@@ -72,17 +72,21 @@ float vec3f_dot(vec3f v1, vec3f v2) {
 vec2f vec2f_norm(vec2f v1) {
 	float v1mag = vec2f_mag(v1);
 	vec2f v3;
-	v3.x = v1.x / v1mag;
-	v3.y = v1.y / v1mag;
+	v3.x = v1.x / (v1mag == 0. ? 1. : v1mag);
+	v3.y = v1.y / (v1mag == 0. ? 1. : v1mag);
 	return v3;
+}
+
+vec2f vec2f_project(vec2f v1, vec2f v2) {
+	return vec2f_scale(v2, vec2f_dot(v1, v2) / vec2f_dot(v2, v2));
 }
 
 vec3f vec3f_norm(vec3f v1) {
 	float v1mag = vec3f_mag(v1);
 	vec3f v3;
-	v3.x = v1.x / v1mag;
-	v3.y = v1.y / v1mag;
-	v3.z = v1.z / v1mag;
+	v3.x = v1.x / (v1mag == 0. ? 1. : v1mag);
+	v3.y = v1.y / (v1mag == 0. ? 1. : v1mag);
+	v3.z = v1.z / (v1mag == 0. ? 1. : v1mag);
 	return v3;
 }
 
