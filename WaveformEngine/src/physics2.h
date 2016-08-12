@@ -24,33 +24,26 @@ struct physics2_ctx {
 		void (*postCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f);
 };
 
-#define PHYSICS2_RECT 0
-#define PHYSICS2_CIRCLE 1
-#define PHYSICS2_POLY 2
+void physics2_setCanCollideCallback(struct physics2_ctx* ctx, void (*canCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape));
 
-struct physics2_rect {
-		uint8_t type;
-		vec2f loc;
-		vec2f ploc;
-		float rot;
-		float lrot;
-		float rps; // radians per second
-		vec2f vel;
-		vec2f constant_accel;
-		float mass;
-		float moi;
-		float radius;
-		size_t index;
-		float friction; // 1 = instantly stop, 0 = no friction
-		float elasticity;
-		float drag; // 1 = never move 0 = infinite terminal velocity
-		float rdrag;
-		void* data;
-		float width;
-		float height;
-};
+void physics2_setSensorCollideCallback(struct physics2_ctx* ctx, void (*sensorCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape));
+
+void physics2_setPreCollideCallback(struct physics2_ctx* ctx, void (*preCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f));
+
+void physics2_setPostCollideCallback(struct physics2_ctx* ctx, void (*postCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f));
+
+#define PHYSICS2_POLY 0
+#define PHYSICS2_CIRCLE 1
 
 union physics2_shape physics2_newRect(float width, float height);
+
+union physics2_shape physics2_newRightTriangle(float width, float height);
+
+union physics2_shape physics2_newEquilateralTriangle(float width);
+
+union physics2_shape physics2_newIsoscelesTriangle(float width, float height);
+
+union physics2_shape physics2_newRegularPolygon(float radius, int n);
 
 struct physics2_circle {
 		uint8_t type;
@@ -77,6 +70,12 @@ struct physics2_circle {
 
 union physics2_shape physics2_newCircle(float radius);
 
+struct __physics2_triangle {
+		vec2f v1;
+		vec2f v2;
+		vec2f v3;
+};
+
 struct physics2_poly {
 		uint8_t type;
 		vec2f loc;
@@ -101,12 +100,14 @@ struct physics2_poly {
 		vec2f* points;
 		size_t point_count;
 		unsigned int calllist;
+		uint8_t concave;
+		struct __physics2_triangle* triangles;
+		size_t triangle_count;
 };
 
-union physics2_shape physics2_newPoly(vec2f* points, size_t point_count);
+union physics2_shape physics2_newPoly(vec2f* points, size_t point_count, uint8_t concave);
 
 union physics2_shape {
-		struct physics2_rect* rect;
 		struct physics2_circle* circle;
 		struct physics2_poly* poly;
 };
