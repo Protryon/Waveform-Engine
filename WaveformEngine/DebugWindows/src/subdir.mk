@@ -9,6 +9,7 @@ C_SRCS += \
 ../src/gui.c \
 ../src/json.c \
 ../src/main.c \
+../src/physics2.c \
 ../src/pqueue.c \
 ../src/queue.c \
 ../src/render.c \
@@ -25,6 +26,7 @@ OBJS += \
 ./src/gui.o \
 ./src/json.o \
 ./src/main.o \
+./src/physics2.o \
 ./src/pqueue.o \
 ./src/queue.o \
 ./src/render.o \
@@ -41,6 +43,7 @@ C_DEPS += \
 ./src/gui.d \
 ./src/json.d \
 ./src/main.d \
+./src/physics2.d \
 ./src/pqueue.d \
 ./src/queue.d \
 ./src/render.d \

@@ -33,6 +33,10 @@ vec3f vec3f_scale(vec3f v1, float f);
 
 vec2f vec2f_project(vec2f v1, vec2f v2);
 
+int vec2f_eq(vec2f v1, vec2f v2);
+
+int vec3f_eq(vec3f v1, vec3f v2);
+
 float vec2f_mag(vec2f v1);
 
 float vec3f_mag(vec3f v1);

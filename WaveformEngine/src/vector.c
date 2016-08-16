@@ -38,6 +38,14 @@ vec3f vec3f_sub(vec3f v1, vec3f v2) {
 	return v3;
 }
 
+int vec2f_eq(vec2f v1, vec2f v2) {
+	return v1.x == v2.x && v1.y == v2.y;
+}
+
+int vec3f_eq(vec3f v1, vec3f v2) {
+	return v1.x == v2.x && v1.y == v2.y && v1.z == v2.z;
+}
+
 vec2f vec2f_scale(vec2f v1, float f) {
 	vec2f v3;
 	v3.x = v1.x * f;

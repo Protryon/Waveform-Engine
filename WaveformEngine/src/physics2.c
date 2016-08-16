@@ -183,7 +183,7 @@ void physics2_triangulate(struct physics2_poly* poly) {
 			point = point->prev;
 		} while (point != start);
 	}
-
+	free(pointhead);
 }
 
 union physics2_shape physics2_newPoly(vec2f* points, size_t point_count, uint8_t concave) {
@@ -217,6 +217,7 @@ void physics2_delShape(struct physics2_ctx* ctx, union physics2_shape shape) {
 	if (ctx->shapes[shape.poly->index].poly->type == PHYSICS2_POLY) {
 		if (ctx->shapes[shape.poly->index].poly->calllist > 0) glDeleteLists(ctx->shapes[shape.poly->index].poly->calllist, 1);
 		free(ctx->shapes[shape.poly->index].poly->points);
+		if (shape.poly->concave) free(shape.poly->triangles);
 	}
 	ctx->shapes[shape.poly->index].poly = NULL;
 	free(shape.poly);
@@ -244,35 +245,36 @@ void physics2_free(struct physics2_ctx* ctx) {
 	free(ctx);
 }
 
-void __physics2_tesserror(GLenum errno) {
-	printf("Physics2 error: %u\n", errno);
-}
+/*
+ void __physics2_tesserror(GLenum errno) {
+ printf("Physics2 error: %u\n", errno);
+ }
 
-vec3f __physics2_tvecs[256];
-size_t __physics2_tveci = 0;
+ vec3f __physics2_tvecs[256];
+ size_t __physics2_tveci = 0;
 
-void __physics2_tesscombine(GLdouble coords[3], void *vertex_data[4], GLfloat weight[4], void **outData) {
-	printf("combine to %f, %f, %f\n", coords[0], coords[1], coords[2]);
-	__physics2_tvecs[__physics2_tveci].x = coords[0];
-	__physics2_tvecs[__physics2_tveci].y = coords[1];
-	__physics2_tvecs[__physics2_tveci].z = coords[2];
-	*outData = &__physics2_tvecs[__physics2_tveci++];
-}
+ void __physics2_tesscombine(GLdouble coords[3], void *vertex_data[4], GLfloat weight[4], void **outData) {
+ printf("combine to %f, %f, %f\n", coords[0], coords[1], coords[2]);
+ __physics2_tvecs[__physics2_tveci].x = coords[0];
+ __physics2_tvecs[__physics2_tveci].y = coords[1];
+ __physics2_tvecs[__physics2_tveci].z = coords[2];
+ *outData = &__physics2_tvecs[__physics2_tveci++];
+ }
 
-void proxy_glBegin(GLenum glb) {
-	glBegin(glb);
-	printf("glbegin %u\n", glb);
-}
+ void proxy_glBegin(GLenum glb) {
+ glBegin(glb);
+ printf("glbegin %u\n", glb);
+ }
 
-void proxy_glEnd() {
-	glEnd();
-	printf("glend\n");
-}
+ void proxy_glEnd() {
+ glEnd();
+ printf("glend\n");
+ }
 
-void proxy_glVertex2fv(const GLfloat* v) {
-	printf("vertex: %f, %f\n", v[0], v[1]);
-	glVertex2fv(v);
-}
+ void proxy_glVertex2fv(const GLfloat* v) {
+ printf("vertex: %f, %f\n", v[0], v[1]);
+ glVertex2fv(v);
+ }*/
 
 void physics2_adjustCOM(union physics2_shape shape) {
 	if (shape.poly->type == PHYSICS2_POLY) {
@@ -486,13 +488,13 @@ void physics2_drawShape(union physics2_shape shape, float partialTick) {
 }
 
 void __physics2_drawDebug(union physics2_shape shape, float partialTick) {
-	/*lBegin (GL_LINES);
-	 glColor4f(1., 0., 1., 1.);
-	 glVertex2f(0., 0.);
-	 glVertex2f(shape.poly->p2.x, shape.poly->p2.y);
-	 glColor4f(.0, .5, .6, 1.);
-	 glVertex2f(0., 0.);
-	 glVertex2f(shape.poly->p3.x, shape.poly->p3.y);
+	/*glBegin (GL_LINES);
+	 // glColor4f(1., 0., 1., 1.);
+	 //glVertex2f(0., 0.);
+	 // glVertex2f(shape.poly->p2.x, shape.poly->p2.y);
+	 //glColor4f(.0, .5, .6, 1.);
+	 //glVertex2f(0., 0.);
+	 //glVertex2f(shape.poly->p3.x, shape.poly->p3.y);
 	 glColor4f(0., 1., 1., 1.);
 	 glVertex2f(0., 0.);
 	 glVertex2f(shape.poly->p1.x, shape.poly->p1.y);
@@ -530,6 +532,8 @@ void __physics2_drawDebug(union physics2_shape shape, float partialTick) {
 	shape2.circle = NULL;
 	if (ac > 0) __physics2_fillAxis(shape, shape2, vecs, ac, 0);
 	glBegin (GL_LINES);
+	//glVertex2f(-shape.poly->loc.x, -shape.poly->loc.y);
+	//glVertex2f(-shape.poly->loc.x + shape.poly->p1.x, -shape.poly->loc.y + shape.poly->p1.y);
 	for (int i = 0; i < ac; i++) {
 		glVertex2f(0., 0.);
 		glVertex2f(vecs[i].x * 100., vecs[i].y * 100.);
@@ -592,6 +596,25 @@ float physics2_getInterpolatedRotation(union physics2_shape shape, float partial
 	return shape.poly->rot * (1. - partialTick) + shape.poly->lrot * partialTick;
 }
 
+struct __physics2_projdata {
+		vec2f axis;
+		float eox;
+};
+
+union __physics2_branchprojdata {
+		struct __physics2_projdata data;
+		struct __physics2_projectionctx* datum;
+};
+
+struct __physics2_projectionctx {
+		int mos;
+		float mo;
+		vec2f smallest_axis;
+		union __physics2_branchprojdata* buf; // precalced
+		size_t bufi;
+		float eox;
+};
+
 vec2f __physics2_project(vec2f axis, vec2f* points, size_t point_count) { // x = min, y = max
 	vec2f r;
 	r.x = 0.;
@@ -610,25 +633,25 @@ vec2f __physics2_project(vec2f axis, vec2f* points, size_t point_count) { // x =
 	return r;
 }
 
-vec2f __physics2_getCollisionPoint(vec2f mtv, union physics2_shape shape, union physics2_shape shape2, int pt, vec2f* t1, int pt2, vec2f* t2) {
+vec2f __physics2_getCollisionPoint(vec2f mtv, union physics2_shape shape, union physics2_shape shape2, struct __physics2_triangle* t1, struct __physics2_triangle* t2) {
 	vec2f support[2];
 	int s2 = 0;
 	vec2f support2[2];
 	int s22 = 0;
 	vec2f nmtv = vec2f_norm(mtv);
 	{
-		size_t pc = pt ? 0 : __physics2_getPointCount(shape);
+		size_t pc = t1 != NULL ? 0 : __physics2_getPointCount(shape);
 		vec2f tax[pc];
-		if (!pt) __physics2_getAdjustedGlobalPoints(shape, tax, nmtv, 0); // axis might be better than mtv?
+		if (t1 == NULL) __physics2_getAdjustedGlobalPoints(shape, tax, nmtv, 0); // axis might be better than mtv?
 		vec2f* tx2 = tax;
-		if (pt) {
+		if (t1 != NULL) {
 			tx2 = t1;
 			pc = 3;
 		}
 		float mind = 0.;
 		for (size_t i = 0; i < pc; i++) {
 			float d = vec2f_dot(tx2[i], nmtv);
-			printf("s1-%i %f from %f, %f\n", i, d, tx2[i].x, tx2[i].y);
+			//printf("s1-%i %f from %f, %f\n", i, d, tx2[i].x, tx2[i].y);
 			if (i == 0 || d < mind) {
 				mind = d;
 			}
@@ -642,18 +665,18 @@ vec2f __physics2_getCollisionPoint(vec2f mtv, union physics2_shape shape, union 
 		}
 	}
 	{
-		size_t pc = pt2 ? 0 : __physics2_getPointCount(shape2);
+		size_t pc = t2 != NULL ? 0 : __physics2_getPointCount(shape2);
 		vec2f tax[pc];
-		if (!pt2) __physics2_getAdjustedGlobalPoints(shape2, tax, nmtv, 0);
+		if (t2 == NULL) __physics2_getAdjustedGlobalPoints(shape2, tax, nmtv, 0);
 		vec2f* tx2 = tax;
-		if (pt2) {
+		if (t2 != NULL) {
 			tx2 = t2;
 			pc = 3;
 		}
 		float mind = 0.;
 		for (size_t i = 0; i < pc; i++) {
 			float d = vec2f_dot(tx2[i], vec2f_scale(nmtv, -1.));
-			printf("s2-%i %f from %f, %f\n", i, d, tx2[i].x, tx2[i].y);
+			//printf("s2-%i %f from %f, %f\n", i, d, tx2[i].x, tx2[i].y);
 			if (i == 0 || d < mind) {
 				mind = d;
 			}
@@ -666,7 +689,7 @@ vec2f __physics2_getCollisionPoint(vec2f mtv, union physics2_shape shape, union 
 			}
 		}
 	}
-	printf("s1 = %i, s2 = %i\n", s2, s22);
+	//printf("s1 = %i, s2 = %i\n", s2, s22);
 	if (s22 == 1 && s2 == 1) {
 		return support[0];
 	} else if (s22 == 2 && s2 == 1) {
@@ -727,15 +750,9 @@ void physics2_calculateMOI(union physics2_shape shape) {
 	}
 }
 
-struct __physics2_projectionctx {
-		int mos;
-		float mo;
-		vec2f smallest_axis;
-};
-
-int __physics2_fillProjection(struct __physics2_projectionctx* ctx, vec2f axis, vec2f* points, size_t point_count, vec2f* points2, size_t point2_count, vec2f* buf) {
-	vec2f v1 = __physics2_project(axis, points2, point2_count);
-	vec2f v2 = __physics2_project(axis, points, point_count);
+int __physics2_fillProjection(struct __physics2_projectionctx* ctx, vec2f axis, vec2f* points, size_t point_count, vec2f* points2, size_t point2_count) {
+	vec2f v1 = __physics2_project(axis, points, point_count);
+	vec2f v2 = __physics2_project(axis, points2, point2_count);
 	float eox = 0.;
 	if (v1.x > v2.x && v1.x < v2.y) {
 		eox = v1.y > v2.y ? v2.y : v1.y;
@@ -747,19 +764,82 @@ int __physics2_fillProjection(struct __physics2_projectionctx* ctx, vec2f axis, 
 		eox = v1.y - v1.x;
 	} else if (v2.x > v1.x && v2.y < v1.y) {
 		eox = v2.y - v2.x;
-	} else {
-		return 0;
 	}
-	if (!ctx->mos || eox < ctx->mo) {
-		ctx->mo = eox;
-		ctx->smallest_axis = axis;
-		ctx->mos = 1;
-	}
-	return 1;
+	ctx->buf[ctx->bufi].data.axis = axis;
+	ctx->buf[ctx->bufi++].data.eox = eox;
+	return eox > 0.;
 }
 
-void __physics2_finishProjection(vec2f* buf) {
-
+int __physics2_finishProjection(struct __physics2_projectionctx* ctx, size_t axis1_count, size_t axis2_count, union physics2_shape shape, union physics2_shape shape2, vec2f* points1, vec2f* points2, struct __physics2_triangle** p1, struct __physics2_triangle** p2) {
+	int cc = shape.poly->type == PHYSICS2_POLY && shape.poly->concave;
+	int cc2 = shape2.poly->type == PHYSICS2_POLY && shape2.poly->concave;
+	if (cc && cc2) {
+		for (size_t l = 0; l < ctx->bufi; l++) {
+			union __physics2_branchprojdata* pdx2 = ctx->buf + l;
+			for (size_t j = 0; j < pdx2->datum->bufi; j++) {
+				union __physics2_branchprojdata* pdx = pdx2->datum->buf + j;
+				int g = 1;
+				for (size_t i = 0; i < pdx->datum->bufi; i++) {
+					union __physics2_branchprojdata* pd = pdx->datum->buf + i;
+					if (pd->data.eox == 0.) {
+						ctx->mos = 0;
+						g = 0;
+						break;
+					}
+					if (!ctx->mos || pd->data.eox < ctx->mo) {
+						ctx->mo = pd->data.eox;
+						ctx->smallest_axis = pd->data.axis;
+						ctx->mos = 1;
+						ctx->eox = pd->data.eox;
+					}
+				}
+				if (g) {
+					*p1 = points1 + l * 3;
+					*p2 = points2 + j * 3;
+					return 1;
+				}
+			}
+		}
+		return 0;
+	} else if (cc2 != cc) {
+		for (size_t l = 0; l < ctx->bufi; l++) {
+			union __physics2_branchprojdata* pdx = ctx->buf + l;
+			int g = 1;
+			//printf("%f, %f; %f, %f; %f, %f\n", shape.poly->triangles[l].v1.x, shape.poly->triangles[l].v1.y, shape.poly->triangles[l].v2.x, shape.poly->triangles[l].v2.y, shape.poly->triangles[l].v3.x, shape.poly->triangles[l].v3.y);
+			for (size_t i = 0; i < pdx->datum->bufi; i++) {
+				union __physics2_branchprojdata* pd = pdx->datum->buf + i;
+				if (pd->data.eox == 0.) {
+					ctx->mos = 0;
+					g = 0;
+					break;
+				}
+				if (!ctx->mos || pd->data.eox < ctx->mo) {
+					ctx->mo = pd->data.eox;
+					ctx->smallest_axis = pd->data.axis;
+					ctx->mos = 1;
+					ctx->eox = pd->data.eox;
+				}
+			}
+			if (g) {
+				if (cc) *p1 = points1 + l * 3;
+				else *p2 = points2 + l * 3;
+				return 1;
+			}
+		}
+		return 0;
+	} else {
+		for (size_t i = 0; i < ctx->bufi; i++) {
+			union __physics2_branchprojdata* pd = ctx->buf + i;
+			if (pd->data.eox == 0.) return 0;
+			if (!ctx->mos || pd->data.eox < ctx->mo) {
+				ctx->mo = pd->data.eox;
+				ctx->smallest_axis = pd->data.axis;
+				ctx->mos = 1;
+				ctx->eox = pd->data.eox;
+			}
+		}
+	}
+	return 1;
 }
 
 void physics2_simulate(struct physics2_ctx* ctx) {
@@ -796,6 +876,7 @@ void physics2_simulate(struct physics2_ctx* ctx) {
 			vec2f axes1[axes1_count];
 			if (axes1_count > 0) __physics2_fillAxis(shape, shape2, axes1, axes1_count, 0);
 			vec2f axes2[axes2_count];
+			if (axes2_count > 0) __physics2_fillAxis(shape2, shape, axes2, axes2_count, 0);
 			size_t points1_count = shape.poly->type == PHYSICS2_POLY ? axes1_count : 2;
 			vec2f points1[points1_count];
 			vec2f t0;
@@ -808,56 +889,70 @@ void physics2_simulate(struct physics2_ctx* ctx) {
 			struct __physics2_projectionctx pctx;
 			pctx.mo = 0.;
 			pctx.mos = 0;
-			size_t nt = 3;
+			pctx.bufi = 0;
 			int cc = shape.poly->type == PHYSICS2_POLY && shape.poly->concave;
 			int cc2 = shape2.poly->type == PHYSICS2_POLY && shape2.poly->concave;
-			vec2f* npt = NULL;
-			vec2f* ept2 = NULL;
-			int ept = 0;
-			for (size_t j = 0; j < axes1_count; j++) {
-				int r;
-				if (cc) {
-					r = __physics2_fillProjection(&pctx, axes1[j], points1 + nt - 3, 3, points2, points2_count);
-				} else r = __physics2_fillProjection(&pctx, axes1[j], points1, points1_count, points2, points2_count);
-				if (!r) {
-					if (cc) {
-						j = nt - 1;
-						if (j == axes1_count) goto scont;
-						nt += 3;
-						pctx.mo = 0.;
-						pctx.mos = 0;
-					} else goto scont;
-				} else if (r && cc && j == (nt - 1)) {
-					ept = 1;
-					npt = points1 + nt - 3;
-					//printf("ec %i %f, %f; %f, %f; %f, %f\n", (nt / 3) - 1, npt[0].x - shape.poly->loc.x, npt[0].y - shape.poly->loc.y, npt[1].x - shape.poly->loc.x, npt[1].y - shape.poly->loc.y, npt[2].x - shape.poly->loc.x, npt[2].y - shape.poly->loc.y);
-					break;
+			pctx.buf = smalloc(sizeof(union __physics2_branchprojdata) * (cc ? shape.poly->triangle_count : (cc2 ? shape2.poly->triangle_count : (axes1_count + axes2_count))));
+			if (cc) {
+				for (size_t k = 0; k < shape.poly->triangle_count; k++) {
+					struct __physics2_projectionctx* pj1 = smalloc(sizeof(struct __physics2_projectionctx));
+					pctx.buf[pctx.bufi++].datum = pj1;
+					pj1->buf = smalloc(sizeof(union __physics2_branchprojdata) * (cc2 ? shape2.poly->triangle_count : (axes1_count + axes2_count)));
+					pj1->bufi = 0;
+					pj1->mo = 0.;
+					pj1->mos = 0;
+					if (!cc2) {
+						for (size_t j = k * 3; j < (k + 1) * 3; j++)
+							__physics2_fillProjection(pj1, axes1[j], points1 + k * 3, 3, points2, points2_count);
+						for (size_t j = 0; j < axes2_count; j++)
+							__physics2_fillProjection(pj1, axes2[j], points1 + k * 3, 3, points2, points2_count);
+					} else {
+						for (size_t l = 0; l < shape2.poly->triangle_count; l++) {
+							struct __physics2_projectionctx* pj2 = smalloc(sizeof(struct __physics2_projectionctx));
+							pj1->buf[pj1->bufi++].datum = pj2;
+							pj2->buf = smalloc(sizeof(union __physics2_branchprojdata) * (axes1_count + axes2_count));
+							pj2->bufi = 0;
+							pj2->mo = 0.;
+							pj2->mos = 0;
+							for (size_t j = k * 3; j < (k + 1) * 3; j++)
+								__physics2_fillProjection(pj2, axes1[j], points1 + k * 3, 3, points2 + l * 3 + l, 3);
+							for (size_t j = l * 3; j < (l + 1) * 3; j++)
+								__physics2_fillProjection(pj2, axes2[j], points1 + k * 3, 3, points2 + l * 3, 3);
+						}
+					}
 				}
-			}
-			if (cc && !ept) goto scont;
-			int npt2 = 0;
-			if (axes2_count > 0) __physics2_fillAxis(shape2, shape, axes2, axes2_count, 0);
-			nt = 3;
-			for (size_t j = 0; j < axes2_count; j++) {
-				int r;
-				if (cc2) {
-					r = __physics2_fillProjection(&pctx, axes2[j], points2 + nt - 3, 3, points1, points1_count);
-				} else r = __physics2_fillProjection(&pctx, axes2[j], points2, points2_count, points1, points1_count);
-				if (!r) {
-					if (cc2) {
-						j = nt - 1;
-						if (j == axes2_count) goto scont;
-						nt += 3;
-						pctx.mo = 0.;
-						pctx.mos = 0;
-					} else goto scont;
-				} else if (r && cc2 && j == (nt - 1)) {
-					npt2 = 1;
-					ept2 = points2 + nt - 3;
-					break;
+			} else if (cc2) {
+				for (size_t l = 0; l < shape2.poly->triangle_count; l++) {
+					struct __physics2_projectionctx* pj1 = smalloc(sizeof(struct __physics2_projectionctx));
+					pctx.buf[pctx.bufi++].datum = pj1;
+					pj1->buf = smalloc(sizeof(union __physics2_branchprojdata) * (axes1_count + axes2_count));
+					pj1->bufi = 0;
+					pj1->mo = 0.;
+					pj1->mos = 0;
+					for (size_t j = 0; j < axes1_count; j++)
+						__physics2_fillProjection(pj1, axes1[j], points1, points1_count, points2 + l * 3, 3);
+					for (size_t j = l * 3; j < (l + 1) * 3; j++)
+						__physics2_fillProjection(pj1, axes2[j], points1, points1_count, points2 + l * 3, 3);
 				}
+			} else {
+				for (size_t j = 0; j < axes1_count; j++)
+					if (!__physics2_fillProjection(&pctx, axes1[j], points1, points1_count, points2, points2_count)) {
+						free(pctx.buf);
+						goto scont;
+					}
+				for (size_t j = 0; j < axes2_count; j++)
+					if (!__physics2_fillProjection(&pctx, axes2[j], points1, points1_count, points2, points2_count)) {
+						free(pctx.buf);
+						goto scont;
+					}
 			}
-			if (cc2 && !npt2) goto scont;
+			struct __physics2_triangle* tr1 = NULL;
+			struct __physics2_triangle* tr2 = NULL;
+			if (!__physics2_finishProjection(&pctx, axes1_count, axes2_count, shape, shape2, points1, points2, &tr1, &tr2)) {
+				free(pctx.buf);
+				goto scont;
+			}
+			free(pctx.buf);
 			if (pctx.mos) {
 				if (vec2f_dot(pctx.smallest_axis, vec2f_sub(shape2.poly->loc, shape.poly->loc)) > 0.) {
 					//printf("invert iscircle = %i\n", shape.poly->type == PHYSICS2_CIRCLE);
@@ -869,7 +964,7 @@ void physics2_simulate(struct physics2_ctx* ctx) {
 				//printf("mo = %f  --- %f, %f\n", mo, normal.x, normal.y);
 				pctx.smallest_axis = vec2f_scale(pctx.smallest_axis, pctx.mo);
 				shape2.poly->loc = vec2f_sub(shape2.poly->loc, pctx.smallest_axis);
-				vec2f avg = __physics2_getCollisionPoint(pctx.smallest_axis, shape, shape2, ept, npt, npt2, ept2);
+				vec2f avg = __physics2_getCollisionPoint(pctx.smallest_axis, shape, shape2, tr1, tr2);
 				/*
 				 if (shape.poly->type == PHYSICS2_CIRCLE) {
 				 avg = cpmax1;
