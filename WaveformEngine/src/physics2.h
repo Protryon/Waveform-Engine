@@ -63,9 +63,9 @@ struct physics2_circle {
 		float drag; // 1 = never move 0 = infinite terminal velocity
 		float rdrag;
 		void* data;
-		vec2f p1;
-		vec2f p2;
-		vec2f p3;
+		/*vec2f p1;
+		 vec2f p2;
+		 vec2f p3;*/
 };
 
 union physics2_shape physics2_newCircle(float radius);
@@ -94,9 +94,9 @@ struct physics2_poly {
 		float drag; // 1 = never move 0 = infinite terminal velocity
 		float rdrag;
 		void* data;
-		vec2f p1;
-		vec2f p2;
-		vec2f p3;
+		/*vec2f p1;
+		 vec2f p2;
+		 vec2f p3;*/
 		vec2f* points;
 		size_t point_count;
 		unsigned int calllist;
@@ -104,6 +104,8 @@ struct physics2_poly {
 		struct __physics2_triangle* triangles;
 		size_t triangle_count;
 };
+
+void physics2_triangulate(struct physics2_poly* poly);
 
 union physics2_shape physics2_newPoly(vec2f* points, size_t point_count, uint8_t concave);
 

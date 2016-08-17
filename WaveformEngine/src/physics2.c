@@ -396,11 +396,11 @@ void __physics2_fillAxis(union physics2_shape shape, union physics2_shape shape2
 }
 
 void physics2_drawShape(union physics2_shape shape, float partialTick) {
-	glColor4f(1., 0., 1., 1.);
-	glBegin (GL_LINES);
-	glVertex2f(0., 0.);
-	glVertex2f(shape.poly->p1.x, shape.poly->p1.y);
-	glEnd();
+	//glColor4f(1., 0., 1., 1.);
+	//glBegin (GL_LINES);
+	//glVertex2f(0., 0.);
+	//glVertex2f(shape.poly->p1.x, shape.poly->p1.y);
+	//glEnd();
 	vec2f iloc = physics2_getInterpolatedPosition(shape, partialTick);
 	glPushMatrix();
 	glTranslatef(iloc.x, iloc.y, 0.);
@@ -420,7 +420,7 @@ void physics2_drawShape(union physics2_shape shape, float partialTick) {
 	 glVertex2f(0., 0.);
 	 glVertex2f(yproj.x * 100., yproj.y * 100.);
 	 glEnd();*/
-	glColor4f(1., 0., 0., 1.);
+	//glColor4f(1., 0., 0., 1.);
 	glRotatef(360. * physics2_getInterpolatedRotation(shape, partialTick) / (M_PI * 2.), 0., 0., 1.);
 	if (shape.poly->type == PHYSICS2_CIRCLE) {
 		glBegin (GL_TRIANGLE_FAN);
@@ -436,11 +436,11 @@ void physics2_drawShape(union physics2_shape shape, float partialTick) {
 			glBegin (GL_TRIANGLES);
 			for (size_t i = 0; i < shape.poly->triangle_count; i++) {
 				//glColor4f(0., 0., ((float) i + 1.) / (float) shape.poly->triangle_count, 1.);
-				glColor4f(0., 0., 1., 1.);
+				//glColor4f(0., 0., 1., 1.);
 				glVertex2f(shape.poly->triangles[i].v1.x, shape.poly->triangles[i].v1.y);
-				glColor4f(0., 1., 0., 1.);
+				//glColor4f(0., 1., 0., 1.);
 				glVertex2f(shape.poly->triangles[i].v2.x, shape.poly->triangles[i].v2.y);
-				glColor4f(0., 1., 1., 1.);
+				//glColor4f(0., 1., 1., 1.);
 				glVertex2f(shape.poly->triangles[i].v3.x, shape.poly->triangles[i].v3.y);
 			}
 			glEnd();
@@ -487,61 +487,61 @@ void physics2_drawShape(union physics2_shape shape, float partialTick) {
 	glPopMatrix();
 }
 
-void __physics2_drawDebug(union physics2_shape shape, float partialTick) {
-	/*glBegin (GL_LINES);
-	 // glColor4f(1., 0., 1., 1.);
-	 //glVertex2f(0., 0.);
-	 // glVertex2f(shape.poly->p2.x, shape.poly->p2.y);
-	 //glColor4f(.0, .5, .6, 1.);
-	 //glVertex2f(0., 0.);
-	 //glVertex2f(shape.poly->p3.x, shape.poly->p3.y);
-	 glColor4f(0., 1., 1., 1.);
-	 glVertex2f(0., 0.);
-	 glVertex2f(shape.poly->p1.x, shape.poly->p1.y);
-	 glEnd();*/
-	vec2f iloc = physics2_getInterpolatedPosition(shape, partialTick);
-	glPushMatrix();
-	glTranslatef(iloc.x, iloc.y, 0.);
-	//glRotatef(-(physics2_getInterpolatedRotation(shape, partialTick) / (M_PI * 2)) * 360., 0., 0., 1.);
-	glColor4f(0., 1., 0., 1.);
-	/*glBegin (GL_LINES);
-	 glColor4f(0., 1., 0., 1.);
-	 glVertex2f(0., 0.);
-	 vec2f xproj;
-	 xproj.x = 1.;
-	 xproj.y = 0.;
-	 xproj = vec2f_project(shape.poly->vel, xproj);
-	 vec2f yproj;
-	 yproj.x = 0.;
-	 yproj.y = 1.;
-	 yproj = vec2f_project(shape.poly->vel, yproj);
-	 //printf("%f, %f\n", xproj.x, xproj.y);
-	 glVertex2f(xproj.x * 100., xproj.y * 100.);
-	 glVertex2f(0., 0.);
-	 glVertex2f(yproj.x * 100., yproj.y * 100.);
-	 glEnd();*/
-	//glRotatef(360. * physics2_getInterpolatedRotation(shape, partialTick) / (M_PI * 2.), 0., 0., 1.);
-	size_t ac = 0;
-	if (shape.poly->type == PHYSICS2_CIRCLE) {
-		ac = 1;
-	} else if (shape.poly->type == PHYSICS2_POLY) {
-		ac = shape.poly->concave ? shape.poly->triangle_count * 3 : shape.poly->point_count;
-	}
-	vec2f vecs[ac];
-	union physics2_shape shape2;
-	shape2.circle = NULL;
-	if (ac > 0) __physics2_fillAxis(shape, shape2, vecs, ac, 0);
-	glBegin (GL_LINES);
-	//glVertex2f(-shape.poly->loc.x, -shape.poly->loc.y);
-	//glVertex2f(-shape.poly->loc.x + shape.poly->p1.x, -shape.poly->loc.y + shape.poly->p1.y);
-	for (int i = 0; i < ac; i++) {
-		glVertex2f(0., 0.);
-		glVertex2f(vecs[i].x * 100., vecs[i].y * 100.);
-	}
-	glEnd();
-	glPopMatrix();
-	glColor4f(1., 0., 0., 1.);
-}
+/*void __physics2_drawDebug(union physics2_shape shape, float partialTick) {
+ glBegin (GL_LINES);
+ // glColor4f(1., 0., 1., 1.);
+ //glVertex2f(0., 0.);
+ // glVertex2f(shape.poly->p2.x, shape.poly->p2.y);
+ //glColor4f(.0, .5, .6, 1.);
+ //glVertex2f(0., 0.);
+ //glVertex2f(shape.poly->p3.x, shape.poly->p3.y);
+ glColor4f(0., 1., 1., 1.);
+ glVertex2f(0., 0.);
+ glVertex2f(shape.poly->p1.x, shape.poly->p1.y);
+ glEnd();
+ vec2f iloc = physics2_getInterpolatedPosition(shape, partialTick);
+ glPushMatrix();
+ glTranslatef(iloc.x, iloc.y, 0.);
+ //glRotatef(-(physics2_getInterpolatedRotation(shape, partialTick) / (M_PI * 2)) * 360., 0., 0., 1.);
+ glColor4f(0., 1., 0., 1.);
+ glBegin (GL_LINES);
+ glColor4f(0., 1., 0., 1.);
+ glVertex2f(0., 0.);
+ vec2f xproj;
+ xproj.x = 1.;
+ xproj.y = 0.;
+ xproj = vec2f_project(shape.poly->vel, xproj);
+ vec2f yproj;
+ yproj.x = 0.;
+ yproj.y = 1.;
+ yproj = vec2f_project(shape.poly->vel, yproj);
+ //printf("%f, %f\n", xproj.x, xproj.y);
+ glVertex2f(xproj.x * 100., xproj.y * 100.);
+ glVertex2f(0., 0.);
+ glVertex2f(yproj.x * 100., yproj.y * 100.);
+ glEnd();
+ //glRotatef(360. * physics2_getInterpolatedRotation(shape, partialTick) / (M_PI * 2.), 0., 0., 1.);
+ size_t ac = 0;
+ if (shape.poly->type == PHYSICS2_CIRCLE) {
+ ac = 1;
+ } else if (shape.poly->type == PHYSICS2_POLY) {
+ ac = shape.poly->concave ? shape.poly->triangle_count * 3 : shape.poly->point_count;
+ }
+ vec2f vecs[ac];
+ union physics2_shape shape2;
+ shape2.circle = NULL;
+ if (ac > 0) __physics2_fillAxis(shape, shape2, vecs, ac, 0);
+ glBegin (GL_LINES);
+ //glVertex2f(-shape.poly->loc.x, -shape.poly->loc.y);
+ //glVertex2f(-shape.poly->loc.x + shape.poly->p1.x, -shape.poly->loc.y + shape.poly->p1.y);
+ for (int i = 0; i < ac; i++) {
+ glVertex2f(0., 0.);
+ glVertex2f(vecs[i].x * 100., vecs[i].y * 100.);
+ }
+ glEnd();
+ glPopMatrix();
+ glColor4f(1., 0., 0., 1.);
+ }*/
 
 void physics2_drawAllShapes(struct physics2_ctx* ctx, float x1, float y1, float x2, float y2, float partialTick) {
 	for (size_t i = 0; i < ctx->shape_count; i++) {
@@ -552,15 +552,15 @@ void physics2_drawAllShapes(struct physics2_ctx* ctx, float x1, float y1, float 
 			physics2_drawShape(ctx->shapes[i], partialTick);
 		}
 	}
-	for (size_t i = 0; i < ctx->shape_count; i++) {
-		union physics2_shape shape = ctx->shapes[i];
-		vec2f iloc = physics2_getInterpolatedPosition(shape, partialTick);
-		//printf("%f, %f, %f, %f, %f, %f, %f\n", iloc.x, iloc.y, x1, y1, x2, y2, shape.poly->radius);
-		if (iloc.x - x1 > -shape.poly->radius && iloc.x - x2 < shape.poly->radius && iloc.y - y1 > -shape.poly->radius && iloc.y - y2 < shape.poly->radius) {
-			//printf("dun\n");
-			__physics2_drawDebug(ctx->shapes[i], partialTick);
-		}
-	}
+	/*for (size_t i = 0; i < ctx->shape_count; i++) {
+	 union physics2_shape shape = ctx->shapes[i];
+	 vec2f iloc = physics2_getInterpolatedPosition(shape, partialTick);
+	 //printf("%f, %f, %f, %f, %f, %f, %f\n", iloc.x, iloc.y, x1, y1, x2, y2, shape.poly->radius);
+	 if (iloc.x - x1 > -shape.poly->radius && iloc.x - x2 < shape.poly->radius && iloc.y - y1 > -shape.poly->radius && iloc.y - y2 < shape.poly->radius) {
+	 //printf("dun\n");
+	 __physics2_drawDebug(ctx->shapes[i], partialTick);
+	 }
+	 }*/
 }
 
 void physics2_setMassByArea(union physics2_shape shape, float multiplier) {
@@ -974,8 +974,8 @@ void physics2_simulate(struct physics2_ctx* ctx) {
 				 avg.x = (cpmax2.x - cpmax1.x) / 2. + shape.poly->loc.x;
 				 avg.y = (cpmax2.y - cpmax1.y) / 2. + shape.poly->loc.y;
 				 }*/
-				shape.poly->p1.x = avg.x;						//shape.poly->loc.x + smallest_axis.x * 100.; // avg.x; //(cpmax2.x - cpmax1.x) / 2. + shape.poly->loc.x;
-				shape.poly->p1.y = avg.y;						//shape.poly->loc.y + smallest_axis.y * 100.; // avg.y; //(cpmax2.y - cpmax1.y) / 2. + shape.poly->loc.y;
+				//shape.poly->p1.x = avg.x;						//shape.poly->loc.x + smallest_axis.x * 100.; // avg.x; //(cpmax2.x - cpmax1.x) / 2. + shape.poly->loc.x;
+				//shape.poly->p1.y = avg.y;						//shape.poly->loc.y + smallest_axis.y * 100.; // avg.y; //(cpmax2.y - cpmax1.y) / 2. + shape.poly->loc.y;
 				//shape.poly->p2.x = cpmax2.x;
 				//shape.poly->p2.y = cpmax2.y;
 				//(a == 1 ? shape : shape2).rect->p2.x = ai;
