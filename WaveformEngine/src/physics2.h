@@ -18,13 +18,13 @@ struct physics2_ctx {
 		union physics2_shape* shapes;
 		size_t shape_count;
 		vec2f constant_accel;
-		void (*canCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape);
+		int (*canCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape);
 		void (*sensorCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape); // called when two objects are colliding but canCollide is 0
 		void (*preCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f);
 		void (*postCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f);
 };
 
-void physics2_setCanCollideCallback(struct physics2_ctx* ctx, void (*canCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape));
+void physics2_setCanCollideCallback(struct physics2_ctx* ctx, int (*canCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape));
 
 void physics2_setSensorCollideCallback(struct physics2_ctx* ctx, void (*sensorCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape));
 

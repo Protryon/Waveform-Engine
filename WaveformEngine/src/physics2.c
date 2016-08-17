@@ -38,7 +38,7 @@ void __physics2_initShape(union physics2_shape shape) {
 	shape.poly->data = NULL;
 }
 
-void physics2_setCanCollideCallback(struct physics2_ctx* ctx, void (*canCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape)) {
+void physics2_setCanCollideCallback(struct physics2_ctx* ctx, int (*canCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape)) {
 	ctx->canCollide = canCollide;
 }
 
@@ -861,6 +861,8 @@ void physics2_simulate(struct physics2_ctx* ctx) {
 		for (size_t x = i + 1; x < ctx->shape_count; x++) { // todo quad trees or something
 			union physics2_shape shape2 = ctx->shapes[x];
 			if (shape.poly->loc.x + shape.poly->radius < shape2.poly->loc.x - shape2.poly->radius || shape.poly->loc.x - shape.poly->radius > shape2.poly->loc.x + shape2.poly->radius || shape.poly->loc.y + shape.poly->radius < shape2.poly->loc.y - shape2.poly->radius || shape.poly->loc.y - shape.poly->radius > shape2.poly->loc.y + shape2.poly->radius) continue;
+			int ncc = ctx->canCollide != NULL && !(ctx->canCollide)(ctx, shape, shape2);
+			if (ncc && ctx->sensorCollide == NULL) continue;
 			size_t axes1_count = 0;
 			size_t axes2_count = 0;
 			if (shape.poly->type == PHYSICS2_CIRCLE) {
@@ -954,6 +956,10 @@ void physics2_simulate(struct physics2_ctx* ctx) {
 			}
 			free(pctx.buf);
 			if (pctx.mos) {
+				if (ncc) {
+					if (ctx->sensorCollide != NULL) (ctx->sensorCollide)(ctx, shape, shape2);
+					continue;
+				}
 				if (vec2f_dot(pctx.smallest_axis, vec2f_sub(shape2.poly->loc, shape.poly->loc)) > 0.) {
 					//printf("invert iscircle = %i\n", shape.poly->type == PHYSICS2_CIRCLE);
 					pctx.smallest_axis = vec2f_scale(pctx.smallest_axis, -1.);
@@ -965,6 +971,7 @@ void physics2_simulate(struct physics2_ctx* ctx) {
 				pctx.smallest_axis = vec2f_scale(pctx.smallest_axis, pctx.mo);
 				shape2.poly->loc = vec2f_sub(shape2.poly->loc, pctx.smallest_axis);
 				vec2f avg = __physics2_getCollisionPoint(pctx.smallest_axis, shape, shape2, tr1, tr2);
+				if (ctx->preCollide != NULL) (ctx->preCollide)(ctx, shape, shape2, avg);
 				/*
 				 if (shape.poly->type == PHYSICS2_CIRCLE) {
 				 avg = cpmax1;
@@ -1069,6 +1076,7 @@ void physics2_simulate(struct physics2_ctx* ctx) {
 					//printf("sr2ps type = %i, rx.z = %f, moi = %f    ---   %f, %f\n", shape2.poly->type, rx.z, shape2.poly->moi, rbp.x, rbp.y);
 					//printf("s2rps type = %i, rpsd = %f, trps = %f\n", shape2.poly->type, rx.z / shape2.poly->moi, shape2.poly->rps);
 				}
+				if (ctx->postCollide != NULL) (ctx->postCollide)(ctx, shape, shape2, avg);
 				//shape2.poly->vel.x = 0.;
 				//shape2.poly->vel.y = 0.;
 				//shape.poly->vel.x = 0.;
