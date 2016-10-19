@@ -36,21 +36,22 @@ void __physics2_initShape(union physics2_shape shape) {
 	shape.poly->rdrag = .001;
 	shape.poly->elasticity = 1.;
 	shape.poly->data = NULL;
+	shape.poly->parent.poly = NULL;
 }
 
 void physics2_setCanCollideCallback(struct physics2_ctx* ctx, int (*canCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape)) {
 	ctx->canCollide = canCollide;
 }
 
-void physics2_setSensorCollideCallback(struct physics2_ctx* ctx, void (*sensorCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape)) {
+void physics2_setSensorCollideCallback(struct physics2_ctx* ctx, void (*sensorCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, union physics2_shape, union physics2_shape)) {
 	ctx->sensorCollide = sensorCollide;
 }
 
-void physics2_setPreCollideCallback(struct physics2_ctx* ctx, void (*preCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f)) {
+void physics2_setPreCollideCallback(struct physics2_ctx* ctx, void (*preCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f, union physics2_shape, union physics2_shape)) {
 	ctx->preCollide = preCollide;
 }
 
-void physics2_setPostCollideCallback(struct physics2_ctx* ctx, void (*postCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f)) {
+void physics2_setPostCollideCallback(struct physics2_ctx* ctx, void (*postCollide)(struct physics2_ctx*, union physics2_shape, union physics2_shape, vec2f, union physics2_shape, union physics2_shape)) {
 	ctx->postCollide = postCollide;
 }
 
@@ -63,9 +64,39 @@ void physics2_teleportRot(union physics2_shape shape, float rot) {
 }
 
 void physics2_finalizeShape(union physics2_shape shape, float massMultiplier) {
-	physics2_setMassByArea(shape, 1.);
+	physics2_setMassByArea(shape, massMultiplier);
 	physics2_adjustCOM(shape);
 	physics2_calculateMOI(shape);
+}
+
+union physics2_shape physics2_newCompound(union physics2_shape* shapes, size_t shape_count) {
+	if (shape_count == 0) {
+		union physics2_shape shape;
+		shape.poly = NULL;
+		return shape;
+	}
+	struct physics2_compound* rect = smalloc(sizeof(struct physics2_compound));
+	rect->type = PHYSICS2_COMPOUND;
+	rect->index = -1;
+	union physics2_shape shape;
+	shape.compound = rect;
+	__physics2_initShape(shape);
+	rect->subshapes = smalloc(shape_count * sizeof(union physics2_shape));
+	for (size_t i = 0; i < shape_count; i++) {
+		size_t sz = shapes[i].poly->type == PHYSICS2_POLY ? sizeof(struct physics2_poly) : (shapes[i].poly->type == PHYSICS2_CIRCLE ? sizeof(struct physics2_circle) : sizeof(struct physics2_compound));
+		rect->subshapes[i].poly = smalloc(sz);
+		memcpy(rect->subshapes[i].poly, shapes[i].poly, sz);
+		rect->subshapes[i].poly->parent = shape;
+	}
+	memcpy(rect->subshapes, shapes, shape_count * sizeof(union physics2_shape));
+	rect->subshape_count = shape_count;
+	rect->radius = 0.;
+	for (size_t i = 0; i < rect->subshape_count; i++) {
+		float len = sqrt(rect->subshapes[i].poly->loc.x * rect->subshapes[i].poly->loc.x + rect->subshapes[i].poly->loc.y * rect->subshapes[i].poly->loc.y);
+		len += rect->subshapes[i].poly->radius;
+		if (len > rect->radius) rect->radius = len;
+	}
+	return shape;
 }
 
 union physics2_shape physics2_newRect(float width, float height) {
@@ -206,7 +237,6 @@ union physics2_shape physics2_newPoly(vec2f* points, size_t point_count, uint8_t
 		float len = sqrt(rect->points[i].x * rect->points[i].x + rect->points[i].y * rect->points[i].y);
 		if (len > rect->radius) rect->radius = len;
 	}
-	rect->calllist = 0;
 	rect->concave = concave;
 	rect->triangles = NULL;
 	rect->triangle_count = 0;
@@ -214,12 +244,16 @@ union physics2_shape physics2_newPoly(vec2f* points, size_t point_count, uint8_t
 }
 
 void physics2_delShape(struct physics2_ctx* ctx, union physics2_shape shape) {
-	if (ctx->shapes[shape.poly->index].poly->type == PHYSICS2_POLY) {
-		if (ctx->shapes[shape.poly->index].poly->calllist > 0) glDeleteLists(ctx->shapes[shape.poly->index].poly->calllist, 1);
-		free(ctx->shapes[shape.poly->index].poly->points);
+	if (shape.poly->type == PHYSICS2_POLY) {
+		free(shape.poly->points);
 		if (shape.poly->concave) free(shape.poly->triangles);
+	} else if (shape.poly->type == PHYSICS2_COMPOUND) {
+		for (size_t i = 0; i < shape.compound->subshape_count; i++) {
+			physics2_delShape(NULL, shape.compound->subshapes[i]);
+		}
+		free(shape.compound->subshapes);
 	}
-	ctx->shapes[shape.poly->index].poly = NULL;
+	if (ctx != NULL) ctx->shapes[shape.poly->index].poly = NULL;
 	free(shape.poly);
 }
 
@@ -293,6 +327,17 @@ void physics2_adjustCOM(union physics2_shape shape) {
 			shape.poly->points[i].x -= xc;
 			shape.poly->points[i].y -= yc;
 		}
+	} else if (shape.poly->type == PHYSICS2_COMPOUND) {
+		float xc = 0.;
+		float yc = 0.;
+		for (size_t i = 0; i < shape.compound->subshape_count; i++) {
+			xc += shape.compound->subshapes[i].poly->loc.x * shape.compound->subshapes[i].poly->mass / shape.compound->mass;
+			yc += shape.compound->subshapes[i].poly->loc.y * shape.compound->subshapes[i].poly->mass / shape.compound->mass;
+		}
+		for (size_t i = 0; i < shape.compound->subshape_count; i++) {
+			shape.compound->subshapes[i].poly->loc.x -= xc;
+			shape.compound->subshapes[i].poly->loc.y -= yc;
+		}
 	}
 }
 
@@ -301,11 +346,18 @@ size_t __physics2_getPointCount(union physics2_shape shape) {
 		return 2; // really infinite or 0, but we generate the 2 needed on demand
 	} else if (shape.poly->type == PHYSICS2_POLY) {
 		return shape.poly->point_count;
+	} else if (shape.poly->type == PHYSICS2_COMPOUND) {
+		size_t pc;
+		for (size_t i = 0; i < shape.compound->subshape_count; i++) {
+			pc += __physics2_getPointCount(shape.compound->subshapes[i]);
+		}
+		return pc;
 	}
 	return 0;
 }
 
-void __physics2_getAdjustedGlobalPoints(union physics2_shape shape, vec2f* points, vec2f onLine, int caxisgen) { // onLine is only used for circles, always an axis (but doesnt need to be); caxisgen is 1 when axes are being generated for a concave shape
+// a compound should never be passed in, only its noncompound children
+void __physics2_getAdjustedGlobalPoints(union physics2_shape shape, vec2f* points, vec2f onLine, int caxisgen, vec2f shift) { // onLine is only used for circles, always an axis (but doesnt need to be); caxisgen is 1 when axes are being generated for a concave shape
 	float c = cosf(shape.poly->rot);
 	float s = sinf(shape.poly->rot);
 	if (shape.poly->type == PHYSICS2_CIRCLE) {
@@ -317,8 +369,8 @@ void __physics2_getAdjustedGlobalPoints(union physics2_shape shape, vec2f* point
 		nx = points[1].x * c - points[1].y * s;
 		points[1].y = points[1].y * c + points[1].x * s;
 		points[1].x = nx;
-		points[0] = vec2f_add(points[0], shape.circle->loc);
-		points[1] = vec2f_add(points[1], shape.circle->loc);
+		points[0] = vec2f_add(points[0], shift);
+		points[1] = vec2f_add(points[1], shift);
 	} else if (shape.poly->type == PHYSICS2_POLY) {
 		float nx;
 		if (caxisgen && shape.poly->concave) {
@@ -329,27 +381,28 @@ void __physics2_getAdjustedGlobalPoints(union physics2_shape shape, vec2f* point
 				nx = points[i * 3].x * c - points[i * 3].y * s;
 				points[i * 3].y = points[i * 3].y * c + points[i * 3].x * s;
 				points[i * 3].x = nx;
-				points[i * 3] = vec2f_add(points[i * 3], shape.poly->loc);
+				points[i * 3] = vec2f_add(points[i * 3], shift);
 				nx = points[i * 3 + 1].x * c - points[i * 3 + 1].y * s;
 				points[i * 3 + 1].y = points[i * 3 + 1].y * c + points[i * 3 + 1].x * s;
 				points[i * 3 + 1].x = nx;
-				points[i * 3 + 1] = vec2f_add(points[i * 3 + 1], shape.poly->loc);
+				points[i * 3 + 1] = vec2f_add(points[i * 3 + 1], shift);
 				nx = points[i * 3 + 2].x * c - points[i * 3 + 2].y * s;
 				points[i * 3 + 2].y = points[i * 3 + 2].y * c + points[i * 3 + 2].x * s;
 				points[i * 3 + 2].x = nx;
-				points[i * 3 + 2] = vec2f_add(points[i * 3 + 2], shape.poly->loc);
+				points[i * 3 + 2] = vec2f_add(points[i * 3 + 2], shift);
 			}
 		} else for (size_t i = 0; i < shape.poly->point_count; i++) {
 			points[i] = shape.poly->points[i];
 			nx = points[i].x * c - points[i].y * s;
 			points[i].y = points[i].y * c + points[i].x * s;
 			points[i].x = nx;
-			points[i] = vec2f_add(points[i], shape.poly->loc);
+			points[i] = vec2f_add(points[i], shift);
 		}
 	}
 }
 
-void __physics2_fillAxis(union physics2_shape shape, union physics2_shape shape2, vec2f* axes, size_t axes_count, int debug) {
+// a compound should never be passed in, only its noncompound children
+void __physics2_fillAxis(union physics2_shape shape, union physics2_shape shape2, vec2f* axes, size_t axes_count, int debug, vec2f shift, vec2f shift2) {
 	vec2f t;
 	t.x = 0.;
 	t.y = 0.;
@@ -362,7 +415,7 @@ void __physics2_fillAxis(union physics2_shape shape, union physics2_shape shape2
 		} else if (shape2.poly->type == PHYSICS2_POLY) {
 			size_t pc = __physics2_getPointCount(shape2);
 			vec2f tax[pc];
-			__physics2_getAdjustedGlobalPoints(shape2, tax, t, 0);
+			__physics2_getAdjustedGlobalPoints(shape2, tax, t, 0, shift2);
 			vec2f best;
 			float bd = 0.;
 			vec2f t;
@@ -385,13 +438,13 @@ void __physics2_fillAxis(union physics2_shape shape, union physics2_shape shape2
 		}
 		return;
 	}
-	__physics2_getAdjustedGlobalPoints(shape, axes, t, 1);
+	__physics2_getAdjustedGlobalPoints(shape, axes, t, 1, shift);
 	vec2f lt = axes[0];
 	for (size_t j = 0; j < axes_count; j++) {
 		vec2f nv = shape.poly->concave ? (j % 3 == 2 ? lt : axes[j + 1]) : lt;
 		if (shape.poly->concave && j % 3 == 0) lt = axes[j];
 		//
-		axes[j] = debug ? vec2f_sub(axes[j], shape.poly->loc) : vec2f_norm(vec2f_perp(vec2f_sub(axes[j], shape.poly->concave ? nv : ((j + 1) == axes_count ? lt : axes[j + 1]))));
+		axes[j] = debug ? vec2f_sub(axes[j], shift) : vec2f_norm(vec2f_perp(vec2f_sub(axes[j], shape.poly->concave ? nv : ((j + 1) == axes_count ? lt : axes[j + 1]))));
 	}
 }
 
@@ -450,39 +503,11 @@ void physics2_drawShape(union physics2_shape shape, float partialTick) {
 				glVertex2f(shape.poly->points[i].x, shape.poly->points[i].y);
 			}
 			glEnd();
-			/*
-			 if (shape.poly->calllist == 0) {
-			 //printf("polycall\n");
-			 shape.poly->calllist = glGenLists(1);
-			 glNewList(shape.poly->calllist, GL_COMPILE_AND_EXECUTE);
-			 __physics2_tveci = 0;
-			 double* v3 = smalloc(sizeof(double) * shape.poly->point_count * 3);
-			 GLUtesselator* tess = gluNewTess();
-			 gluTessCallback(tess, GLU_TESS_BEGIN, proxy_glBegin);
-			 gluTessCallback(tess, GLU_TESS_END, proxy_glEnd);
-			 gluTessCallback(tess, GLU_TESS_VERTEX, proxy_glVertex2fv);
-			 gluTessCallback(tess, GLU_TESS_COMBINE, __physics2_tesscombine);
-			 gluTessCallback(tess, GLU_TESS_ERROR, __physics2_tesserror);
-			 gluTessBeginPolygon(tess, shape.poly->points);
-			 gluTessBeginContour(tess);
-			 for (size_t i = 0; i < shape.poly->point_count; i++) {
-			 v3[i * 3] = shape.poly->points[i].x;
-			 v3[i * 3 + 1] = shape.poly->points[i].y;
-			 v3[i * 3 + 2] = 0.;
-			 gluTessVertex(tess, &v3[i * 3], &shape.poly->points[i]);
-			 }
-			 gluTessEndContour(tess);
-			 gluTessEndPolygon(tess);
-			 gluDeleteTess(tess);
-			 free(v3);
-			 glEndList();
-			 } else {
-			 //printf("polycall-calllist %u\n", shape.poly->calllist);
-			 glCallList(shape.poly->calllist);
-			 }*/
 		}
-		//glEnable(GL_CULL_FACE);
-
+	} else if (shape.poly->type == PHYSICS2_COMPOUND) {
+		for (size_t i = 0; i < shape.compound->subshape_count; i++) {
+			physics2_drawShape(shape.compound->subshapes[i], partialTick);
+		}
 	}
 	glPopMatrix();
 }
@@ -574,6 +599,10 @@ void physics2_setMassByArea(union physics2_shape shape, float multiplier) {
 		}
 		if (area < 0.) area *= -1.;
 		area /= 2.;
+	} else if (shape.poly->type == PHYSICS2_COMPOUND) {
+		for (size_t i = 0; i < shape.compound->subshape_count; i++) {
+			area += shape.compound->subshapes[i].poly->mass;
+		}
 	}
 	area *= multiplier;
 	shape.poly->mass = area;
@@ -633,20 +662,21 @@ vec2f __physics2_project(vec2f axis, vec2f* points, size_t point_count) { // x =
 	return r;
 }
 
-vec2f __physics2_getCollisionPoint(vec2f mtv, union physics2_shape shape, union physics2_shape shape2, struct __physics2_triangle* t1, struct __physics2_triangle* t2) {
+//TODO compound/total shape point checkin
+vec2f __physics2_getCollisionPoint(vec2f mtv, union physics2_shape shape, union physics2_shape shape2, vec2f* vec1, size_t vec1_count, vec2f* vec2, size_t vec2_count, vec2f shift, vec2f shift2) {
 	vec2f support[2];
 	int s2 = 0;
 	vec2f support2[2];
 	int s22 = 0;
 	vec2f nmtv = vec2f_norm(mtv);
 	{
-		size_t pc = t1 != NULL ? 0 : __physics2_getPointCount(shape);
+		size_t pc = vec1 != NULL ? 0 : __physics2_getPointCount(shape);
 		vec2f tax[pc];
-		if (t1 == NULL) __physics2_getAdjustedGlobalPoints(shape, tax, nmtv, 0); // axis might be better than mtv?
+		if (vec1 == NULL) __physics2_getAdjustedGlobalPoints(shape, tax, nmtv, 0, shift); // axis might be better than mtv?
 		vec2f* tx2 = tax;
-		if (t1 != NULL) {
-			tx2 = t1;
-			pc = 3;
+		if (vec1 != NULL) {
+			tx2 = vec1;
+			pc = vec1_count;
 		}
 		float mind = 0.;
 		for (size_t i = 0; i < pc; i++) {
@@ -665,13 +695,13 @@ vec2f __physics2_getCollisionPoint(vec2f mtv, union physics2_shape shape, union 
 		}
 	}
 	{
-		size_t pc = t2 != NULL ? 0 : __physics2_getPointCount(shape2);
+		size_t pc = vec2 != NULL ? 0 : __physics2_getPointCount(shape2);
 		vec2f tax[pc];
-		if (t2 == NULL) __physics2_getAdjustedGlobalPoints(shape2, tax, nmtv, 0);
+		if (vec2 == NULL) __physics2_getAdjustedGlobalPoints(shape2, tax, nmtv, 0, shift2);
 		vec2f* tx2 = tax;
-		if (t2 != NULL) {
-			tx2 = t2;
-			pc = 3;
+		if (vec2 != NULL) {
+			tx2 = vec2;
+			pc = vec2_count;
 		}
 		float mind = 0.;
 		for (size_t i = 0; i < pc; i++) {
@@ -746,7 +776,13 @@ void physics2_calculateMOI(union physics2_shape shape) {
 			sum1 += vec2f_cross(shape.poly->points[ni], shape.poly->points[i], 0.).z * (vec2f_dot(shape.poly->points[ni], shape.poly->points[ni]) + vec2f_dot(shape.poly->points[ni], shape.poly->points[i]) + vec2f_dot(shape.poly->points[i], shape.poly->points[i]));
 			sum2 += vec2f_cross(shape.poly->points[ni], shape.poly->points[i], 0.).z;
 		}
-		shape.circle->moi = (shape.poly->mass / 6. * sum1 / sum2);
+		shape.poly->moi = (shape.poly->mass / 6. * sum1 / sum2);
+	} else if (shape.poly->type == PHYSICS2_COMPOUND) {
+		shape.compound->moi = 0.;
+		for (size_t i = 0; i < shape.compound->subshape_count; i++) {
+			struct physics2_poly* poly = shape.compound->subshapes[i].poly; // parallel axis theorem below
+			shape.compound->moi += poly->moi + poly->mass * ((poly->loc.x - shape.compound->loc.x) * (poly->loc.x - shape.compound->loc.x) + (poly->loc.y - shape.compound->loc.y) * (poly->loc.y - shape.compound->loc.y));
+		}
 	}
 }
 
@@ -842,6 +878,301 @@ int __physics2_finishProjection(struct __physics2_projectionctx* ctx, size_t axi
 	return 1;
 }
 
+void __physics2_checkCollision(struct physics2_ctx* ctx, union physics2_shape shape, union physics2_shape shape2, vec2f shift, vec2f shift2, union physics2_shape shape_velmaster, union physics2_shape shape2_velmaster) {
+	//printf("pcx %i\n", shape.poly->type == PHYSICS2_COMPOUND);
+	if (shift.x + shape.poly->radius < shift2.x - shape2.poly->radius || shift.x - shape.poly->radius > shift2.x + shape2.poly->radius || shift.y + shape.poly->radius < shift2.y - shape2.poly->radius || shift.y - shape.poly->radius > shift2.y + shape2.poly->radius) return;
+	//printf("pcx2 %i\n", shape.poly->type == PHYSICS2_COMPOUND);
+	int ncc = ctx->canCollide != NULL && !(ctx->canCollide)(ctx, shape, shape2);
+	//printf("pcx3 %i\n", shape.poly->type == PHYSICS2_COMPOUND);
+	if (ncc && ctx->sensorCollide == NULL) return;
+	//printf("checkcol1 %i %f %f\n", shape.poly->type == PHYSICS2_COMPOUND, shape.poly->radius, shape2.poly->radius);
+	if (shape.compound->type == PHYSICS2_COMPOUND) {
+		//printf("comp1c\n");
+		for (size_t i = 0; i < shape.compound->subshape_count; i++) {
+			//printf("comp1c-s2\n");
+			//printf("1. %f, %f\n", shift.x, shift.y);
+			union physics2_shape ps = shape.compound->subshapes[i];
+			float c2 = cosf(shape.poly->rot);
+			float s2 = sinf(shape.poly->rot);
+			vec2f rloc;
+			rloc.x = ps.poly->loc.x;
+			rloc.y = ps.poly->loc.y;
+			float nx = rloc.x * c2 - rloc.y * s2;
+			rloc.y = rloc.y * c2 + rloc.x * s2;
+			rloc.x = nx;
+			shift = vec2f_add(rloc, shift);
+			//printf("2. %f, %f\n", shift.x, shift.y);
+			__physics2_checkCollision(ctx, ps, shape2, shift, shift2, shape_velmaster, shape2_velmaster);
+		}
+		return;
+	} else if (shape2.compound->type == PHYSICS2_COMPOUND) {
+		//printf("comp2c\n");
+		for (size_t i = 0; i < shape2.compound->subshape_count; i++) {
+			//printf("comp2c-s2\n");
+			union physics2_shape ps2 = shape2.compound->subshapes[i];
+			float c2 = cosf(shape2.poly->rot);
+			float s2 = sinf(shape2.poly->rot);
+			vec2f rloc;
+			rloc.x = ps2.poly->loc.x;
+			rloc.y = ps2.poly->loc.y;
+			float nx = rloc.x * c2 - rloc.y * s2;
+			rloc.y = rloc.y * c2 + rloc.x * s2;
+			rloc.x = nx;
+			shift2 = vec2f_add(rloc, shift2);
+			__physics2_checkCollision(ctx, shape, ps2, shift, shift2, shape_velmaster, shape2_velmaster);
+		}
+		return;
+	} else if (shape.compound->type == PHYSICS2_COMPOUND && shape2.compound->type == PHYSICS2_COMPOUND) {
+		//printf("comp12c\n");
+		for (size_t i = 0; i < shape.compound->subshape_count; i++) {
+			for (size_t x = 0; x < shape2.compound->subshape_count; x++) {
+				union physics2_shape ps = shape.compound->subshapes[i];
+				float c2 = cosf(shape.poly->rot);
+				float s2 = sinf(shape.poly->rot);
+				vec2f rloc;
+				rloc.x = ps.poly->loc.x;
+				rloc.y = ps.poly->loc.y;
+				float nx = rloc.x * c2 - rloc.y * s2;
+				rloc.y = rloc.y * c2 + rloc.x * s2;
+				rloc.x = nx;
+				shift = vec2f_add(rloc, shift);
+				union physics2_shape ps2 = shape2.compound->subshapes[i];
+				c2 = cosf(shape2.poly->rot);
+				s2 = sinf(shape2.poly->rot);
+				rloc.x = ps2.poly->loc.x;
+				rloc.y = ps2.poly->loc.y;
+				nx = rloc.x * c2 - rloc.y * s2;
+				rloc.y = rloc.y * c2 + rloc.x * s2;
+				rloc.x = nx;
+				shift2 = vec2f_add(rloc, shift2);
+				__physics2_checkCollision(ctx, ps, ps2, shift, shift2, shape_velmaster, shape2_velmaster);
+			}
+		}
+		return;
+	}
+	//printf("ncompn\n");
+	size_t axes1_count = 0;
+	size_t axes2_count = 0;
+	if (shape.poly->type == PHYSICS2_CIRCLE) {
+		axes1_count = 1;
+	} else if (shape.poly->type == PHYSICS2_POLY) {
+		axes1_count = shape.poly->concave ? shape.poly->triangle_count * 3 : shape.poly->point_count;
+	}
+	if (shape2.poly->type == PHYSICS2_CIRCLE) {
+		axes2_count = shape.poly->type == PHYSICS2_CIRCLE ? 0 : 1;
+	} else if (shape2.poly->type == PHYSICS2_POLY) {
+		axes2_count = shape2.poly->concave ? shape2.poly->triangle_count * 3 : shape2.poly->point_count;
+	}
+	vec2f axes1[axes1_count];
+	if (axes1_count > 0) __physics2_fillAxis(shape, shape2, axes1, axes1_count, 0, shift, shift2);
+	vec2f axes2[axes2_count];
+	if (axes2_count > 0) __physics2_fillAxis(shape2, shape, axes2, axes2_count, 0, shift2, shift);
+	size_t points1_count = shape.poly->type == PHYSICS2_POLY ? axes1_count : 2;
+	vec2f points1[points1_count];
+	vec2f t0;
+	t0.x = 0.;
+	t0.y = 0.;
+	__physics2_getAdjustedGlobalPoints(shape, points1, t0, 1, shift);
+	size_t points2_count = shape2.poly->type == PHYSICS2_POLY ? axes2_count : 2;
+	vec2f points2[points2_count];
+	__physics2_getAdjustedGlobalPoints(shape2, points2, t0, 1, shift2);
+	struct __physics2_projectionctx pctx;
+	pctx.mo = 0.;
+	pctx.mos = 0;
+	pctx.bufi = 0;
+	int cc = shape.poly->type == PHYSICS2_POLY && shape.poly->concave;
+	int cc2 = shape2.poly->type == PHYSICS2_POLY && shape2.poly->concave;
+	pctx.buf = smalloc(sizeof(union __physics2_branchprojdata) * (cc ? shape.poly->triangle_count : (cc2 ? shape2.poly->triangle_count : (axes1_count + axes2_count))));
+	if (cc) {
+		for (size_t k = 0; k < shape.poly->triangle_count; k++) {
+			struct __physics2_projectionctx* pj1 = smalloc(sizeof(struct __physics2_projectionctx));
+			pctx.buf[pctx.bufi++].datum = pj1;
+			pj1->buf = smalloc(sizeof(union __physics2_branchprojdata) * (cc2 ? shape2.poly->triangle_count : (axes1_count + axes2_count)));
+			pj1->bufi = 0;
+			pj1->mo = 0.;
+			pj1->mos = 0;
+			if (!cc2) {
+				for (size_t j = k * 3; j < (k + 1) * 3; j++)
+					__physics2_fillProjection(pj1, axes1[j], points1 + k * 3, 3, points2, points2_count);
+				for (size_t j = 0; j < axes2_count; j++)
+					__physics2_fillProjection(pj1, axes2[j], points1 + k * 3, 3, points2, points2_count);
+			} else {
+				for (size_t l = 0; l < shape2.poly->triangle_count; l++) {
+					struct __physics2_projectionctx* pj2 = smalloc(sizeof(struct __physics2_projectionctx));
+					pj1->buf[pj1->bufi++].datum = pj2;
+					pj2->buf = smalloc(sizeof(union __physics2_branchprojdata) * (axes1_count + axes2_count));
+					pj2->bufi = 0;
+					pj2->mo = 0.;
+					pj2->mos = 0;
+					for (size_t j = k * 3; j < (k + 1) * 3; j++)
+						__physics2_fillProjection(pj2, axes1[j], points1 + k * 3, 3, points2 + l * 3 + l, 3);
+					for (size_t j = l * 3; j < (l + 1) * 3; j++)
+						__physics2_fillProjection(pj2, axes2[j], points1 + k * 3, 3, points2 + l * 3, 3);
+				}
+			}
+		}
+	} else if (cc2) {
+		for (size_t l = 0; l < shape2.poly->triangle_count; l++) {
+			struct __physics2_projectionctx* pj1 = smalloc(sizeof(struct __physics2_projectionctx));
+			pctx.buf[pctx.bufi++].datum = pj1;
+			pj1->buf = smalloc(sizeof(union __physics2_branchprojdata) * (axes1_count + axes2_count));
+			pj1->bufi = 0;
+			pj1->mo = 0.;
+			pj1->mos = 0;
+			for (size_t j = 0; j < axes1_count; j++)
+				__physics2_fillProjection(pj1, axes1[j], points1, points1_count, points2 + l * 3, 3);
+			for (size_t j = l * 3; j < (l + 1) * 3; j++)
+				__physics2_fillProjection(pj1, axes2[j], points1, points1_count, points2 + l * 3, 3);
+		}
+	} else {
+		for (size_t j = 0; j < axes1_count; j++)
+			if (!__physics2_fillProjection(&pctx, axes1[j], points1, points1_count, points2, points2_count)) {
+				free(pctx.buf);
+				return;
+			}
+		for (size_t j = 0; j < axes2_count; j++)
+			if (!__physics2_fillProjection(&pctx, axes2[j], points1, points1_count, points2, points2_count)) {
+				free(pctx.buf);
+				return;
+			}
+	}
+	struct __physics2_triangle* tr1 = NULL;
+	struct __physics2_triangle* tr2 = NULL;
+	if (!__physics2_finishProjection(&pctx, axes1_count, axes2_count, shape, shape2, points1, points2, &tr1, &tr2)) {
+		free(pctx.buf);
+		return;
+	}
+	free(pctx.buf);
+	if (pctx.mos) {
+		if (ncc) {
+			if (ctx->sensorCollide != NULL) (ctx->sensorCollide)(ctx, shape_velmaster, shape2_velmaster, shape, shape2);
+			return;
+		}
+		if (vec2f_dot(pctx.smallest_axis, vec2f_sub(shape2.poly->loc, shape.poly->loc)) > 0.) {
+			//printf("invert iscircle = %i\n", shape.poly->type == PHYSICS2_CIRCLE);
+			pctx.smallest_axis = vec2f_scale(pctx.smallest_axis, -1.);
+		}
+		vec2f normal;
+		normal.x = pctx.smallest_axis.x;
+		normal.y = pctx.smallest_axis.y;
+		//printf("mo = %f  --- %f, %f\n", mo, normal.x, normal.y);
+		pctx.smallest_axis = vec2f_scale(pctx.smallest_axis, pctx.mo);
+		shape2.poly->loc = vec2f_sub(shape2.poly->loc, pctx.smallest_axis);
+		vec2f avg = __physics2_getCollisionPoint(pctx.smallest_axis, shape, shape2, tr1, tr1 == NULL ? 0 : 3, tr2, tr2 == NULL ? 0 : 3, shift, shift2);
+		if (ctx->preCollide != NULL) (ctx->preCollide)(ctx, shape_velmaster, shape2_velmaster, avg, shape, shape2);
+		/*
+		 if (shape.poly->type == PHYSICS2_CIRCLE) {
+		 avg = cpmax1;
+		 } else if (shape2.poly->type == PHYSICS2_CIRCLE) {
+		 avg = cpmax2;
+		 } else {
+		 avg.x = (cpmax2.x - cpmax1.x) / 2. + shape.poly->loc.x;
+		 avg.y = (cpmax2.y - cpmax1.y) / 2. + shape.poly->loc.y;
+		 }*/
+		//shape.poly->p1.x = avg.x;						//shape.poly->loc.x + smallest_axis.x * 100.; // avg.x; //(cpmax2.x - cpmax1.x) / 2. + shape.poly->loc.x;
+		//shape.poly->p1.y = avg.y;						//shape.poly->loc.y + smallest_axis.y * 100.; // avg.y; //(cpmax2.y - cpmax1.y) / 2. + shape.poly->loc.y;
+		//shape.poly->p2.x = cpmax2.x;
+		//shape.poly->p2.y = cpmax2.y;
+		//(a == 1 ? shape : shape2).rect->p2.x = ai;
+		//shape.poly->p3.x = cpmax1.x + shape.poly->loc.x * 2.;
+		//shape.poly->p3.y = -cpmax1.y + shape.poly->loc.y * 2.;
+		/*shape.poly->p1.x = cpmin1.x;
+		 shape.poly->p1.y = cpmin1.y;
+		 shape.poly->p2.x = cpmax1.x;
+		 shape.poly->p2.y = cpmax1.y;
+		 shape2.poly->p1.x = -cpmin2.x;
+		 shape2.poly->p1.y = -cpmin2.y;
+		 shape2.poly->p2.x = -cpmax2.x;
+		 shape2.poly->p2.y = -cpmax2.y;*/
+		//printf("<%f, %f> - %f, %f\n", shape.poly->loc.y + shape.poly->height / 2., shape2.poly->loc.y - shape2.poly->height / 2., smallest_axis.x, smallest_axis.y);
+		//
+		vec2f rap = vec2f_sub(avg, shift);
+		vec2f rbp = vec2f_sub(avg, shift2);
+		vec3f pt;
+		pt.x = rap.x;
+		pt.y = rap.y;
+		pt.z = 0.;
+		vec3f tmp;
+		tmp.z = shape_velmaster.poly->rps;
+		vec2f tx;
+		tmp = vec3f_cross(tmp, pt);
+		tx.x = tmp.x;
+		tx.y = tmp.y;
+		vec2f vap1 = vec2f_add(shape_velmaster.poly->vel, tx);
+		tmp.z = shape2_velmaster.poly->rps;
+		pt.x = rbp.x;
+		pt.y = rbp.y;
+		pt.z = 0.;
+		tmp = vec3f_cross(tmp, pt);
+		tx.x = tmp.x;
+		tx.y = tmp.y;
+		vec2f vbp1 = vec2f_add(shape2.poly->vel, tx);
+		vec2f vab1 = vec2f_sub(vap1, vbp1);
+		float j = vec2f_dot(vec2f_scale(vab1, -(1 + (shape2.poly->elasticity > shape.poly->elasticity ? shape2.poly->elasticity : shape.poly->elasticity))), normal);
+		float dj = (1. / shape_velmaster.poly->mass) + (1. / shape2_velmaster.poly->mass);
+		vec3f t1;
+		t1.x = rap.x;
+		t1.y = rap.y;
+		t1.z = 0.;
+		vec3f t2;
+		t2.x = normal.x;
+		t2.y = normal.y;
+		t2.z = 0.;
+		vec3f dt = vec3f_cross(t1, t2);
+		if (shape_velmaster.poly->moi > 0.) {
+			float sd = vec3f_dot(dt, dt);
+			dj += sd / shape_velmaster.poly->moi;
+		}
+		t1.x = rbp.x;
+		t1.y = rbp.y;
+		t1.z = 0.;
+		dt = vec3f_cross(t1, t2);
+		if (shape2_velmaster.poly->moi > 0.) {
+			float sd = vec3f_dot(dt, dt);
+			dj += sd / shape2_velmaster.poly->moi;
+		}
+		//printf("dj = %f\n", j);
+		j /= dj;
+		//printf("pj = %f\n", j);
+		//printf("1 %f: %f, %f; %f, %f\n", j, shape.poly->vel.x, shape.poly->vel.y, shape2.poly->vel.x, shape2.poly->vel.y);
+		shape_velmaster.poly->vel = vec2f_add(shape_velmaster.poly->vel, vec2f_scale(normal, j / shape_velmaster.poly->mass));
+		shape2_velmaster.poly->vel = vec2f_sub(shape2_velmaster.poly->vel, vec2f_scale(normal, j / shape2_velmaster.poly->mass));
+		float frict = (shape2.poly->friction + shape.poly->friction) / 2.;
+		vec2f force = vec2f_scale(vec2f_project(shape_velmaster.poly->vel, vec2f_perp(normal)), -frict * shape_velmaster.poly->mass);
+		physics2_applyForce(shape_velmaster, force, avg);
+		vec2f force2 = vec2f_scale(vec2f_project(shape2_velmaster.poly->vel, vec2f_perp(normal)), -frict * shape2_velmaster.poly->mass);
+		physics2_applyForce(shape2_velmaster, force2, avg);
+		//shape.poly->vel = vec2f_add(vec2f_scale(vec2f_project(shape.poly->vel, vec2f_perp(normal)), frict), vec2f_project(shape.poly->vel, normal));
+		//shape2.poly->vel = vec2f_add(vec2f_scale(vec2f_project(shape2.poly->vel, vec2f_perp(normal)), frict), vec2f_project(shape2.poly->vel, normal));
+		//printf("2 %f: %f, %f; %f, %f\n", j, shape.poly->vel.x, shape.poly->vel.y, shape2.poly->vel.x, shape2.poly->vel.y);
+		//printf("s1 moi = %f, s2 moi = %f\n", shape.poly->moi, shape2.poly->moi);
+		if (shape_velmaster.poly->moi > 0.) {
+			t1.x = rap.x;
+			t1.y = rap.y;
+			t1.z = 0.;
+			vec3f rx = vec3f_cross(t1, vec3f_scale(t2, j));
+			shape_velmaster.poly->rps += rx.z / shape_velmaster.poly->moi;
+			//printf("sr1ps type = %i, rx.z = %f, moi = %f    ---   %f, %f\n", shape.poly->type, rx.z, shape.poly->moi, rap.x, rap.y);
+			//printf("s1rps type = %i, rpsd = %f, trps = %f\n", shape.poly->type, -rx.z / shape.poly->moi, shape.poly->rps);
+		}
+		if (shape2_velmaster.poly->moi > 0.) {
+			t1.x = rbp.x;
+			t1.y = rbp.y;
+			t1.z = 0.;
+			vec3f rx = vec3f_cross(t1, vec3f_scale(t2, j));
+			shape2_velmaster.poly->rps -= rx.z / shape2_velmaster.poly->moi;
+			//printf("sr2ps type = %i, rx.z = %f, moi = %f    ---   %f, %f\n", shape2.poly->type, rx.z, shape2.poly->moi, rbp.x, rbp.y);
+			//printf("s2rps type = %i, rpsd = %f, trps = %f\n", shape2.poly->type, rx.z / shape2.poly->moi, shape2.poly->rps);
+		}
+		if (ctx->postCollide != NULL) (ctx->postCollide)(ctx, shape_velmaster, shape2_velmaster, avg, shape, shape2);
+		//shape2.poly->vel.x = 0.;
+		//shape2.poly->vel.y = 0.;
+		//shape.poly->vel.x = 0.;
+		//shape.poly->vel.y = 0.;
+	}
+	//printf("collide <%f, %f> %f, %f vs <%f, %f> %f, %f\n", shape.poly->width, shape.poly->height, shape.poly->loc.x, shape.poly->loc.y, shape2.poly->width, shape2.poly->height, shape2.poly->loc.x, shape2.poly->loc.y);
+}
+
 void physics2_simulate(struct physics2_ctx* ctx) {
 	for (size_t i = 0; i < ctx->shape_count; i++) {
 		union physics2_shape shape = ctx->shapes[i];
@@ -860,231 +1191,232 @@ void physics2_simulate(struct physics2_ctx* ctx) {
 		shape.poly->rps *= 1. - shape.poly->rdrag;
 		for (size_t x = i + 1; x < ctx->shape_count; x++) { // todo quad trees or something
 			union physics2_shape shape2 = ctx->shapes[x];
-			if (shape.poly->loc.x + shape.poly->radius < shape2.poly->loc.x - shape2.poly->radius || shape.poly->loc.x - shape.poly->radius > shape2.poly->loc.x + shape2.poly->radius || shape.poly->loc.y + shape.poly->radius < shape2.poly->loc.y - shape2.poly->radius || shape.poly->loc.y - shape.poly->radius > shape2.poly->loc.y + shape2.poly->radius) continue;
-			int ncc = ctx->canCollide != NULL && !(ctx->canCollide)(ctx, shape, shape2);
-			if (ncc && ctx->sensorCollide == NULL) continue;
-			size_t axes1_count = 0;
-			size_t axes2_count = 0;
-			if (shape.poly->type == PHYSICS2_CIRCLE) {
-				axes1_count = 1;
-			} else if (shape.poly->type == PHYSICS2_POLY) {
-				axes1_count = shape.poly->concave ? shape.poly->triangle_count * 3 : shape.poly->point_count;
-			}
-			if (shape2.poly->type == PHYSICS2_CIRCLE) {
-				axes2_count = shape.poly->type == PHYSICS2_CIRCLE ? 0 : 1;
-			} else if (shape2.poly->type == PHYSICS2_POLY) {
-				axes2_count = shape2.poly->concave ? shape2.poly->triangle_count * 3 : shape2.poly->point_count;
-			}
-			vec2f axes1[axes1_count];
-			if (axes1_count > 0) __physics2_fillAxis(shape, shape2, axes1, axes1_count, 0);
-			vec2f axes2[axes2_count];
-			if (axes2_count > 0) __physics2_fillAxis(shape2, shape, axes2, axes2_count, 0);
-			size_t points1_count = shape.poly->type == PHYSICS2_POLY ? axes1_count : 2;
-			vec2f points1[points1_count];
-			vec2f t0;
-			t0.x = 0.;
-			t0.y = 0.;
-			__physics2_getAdjustedGlobalPoints(shape, points1, t0, 1);
-			size_t points2_count = shape2.poly->type == PHYSICS2_POLY ? axes2_count : 2;
-			vec2f points2[points2_count];
-			__physics2_getAdjustedGlobalPoints(shape2, points2, t0, 1);
-			struct __physics2_projectionctx pctx;
-			pctx.mo = 0.;
-			pctx.mos = 0;
-			pctx.bufi = 0;
-			int cc = shape.poly->type == PHYSICS2_POLY && shape.poly->concave;
-			int cc2 = shape2.poly->type == PHYSICS2_POLY && shape2.poly->concave;
-			pctx.buf = smalloc(sizeof(union __physics2_branchprojdata) * (cc ? shape.poly->triangle_count : (cc2 ? shape2.poly->triangle_count : (axes1_count + axes2_count))));
-			if (cc) {
-				for (size_t k = 0; k < shape.poly->triangle_count; k++) {
-					struct __physics2_projectionctx* pj1 = smalloc(sizeof(struct __physics2_projectionctx));
-					pctx.buf[pctx.bufi++].datum = pj1;
-					pj1->buf = smalloc(sizeof(union __physics2_branchprojdata) * (cc2 ? shape2.poly->triangle_count : (axes1_count + axes2_count)));
-					pj1->bufi = 0;
-					pj1->mo = 0.;
-					pj1->mos = 0;
-					if (!cc2) {
-						for (size_t j = k * 3; j < (k + 1) * 3; j++)
-							__physics2_fillProjection(pj1, axes1[j], points1 + k * 3, 3, points2, points2_count);
-						for (size_t j = 0; j < axes2_count; j++)
-							__physics2_fillProjection(pj1, axes2[j], points1 + k * 3, 3, points2, points2_count);
-					} else {
-						for (size_t l = 0; l < shape2.poly->triangle_count; l++) {
-							struct __physics2_projectionctx* pj2 = smalloc(sizeof(struct __physics2_projectionctx));
-							pj1->buf[pj1->bufi++].datum = pj2;
-							pj2->buf = smalloc(sizeof(union __physics2_branchprojdata) * (axes1_count + axes2_count));
-							pj2->bufi = 0;
-							pj2->mo = 0.;
-							pj2->mos = 0;
-							for (size_t j = k * 3; j < (k + 1) * 3; j++)
-								__physics2_fillProjection(pj2, axes1[j], points1 + k * 3, 3, points2 + l * 3 + l, 3);
-							for (size_t j = l * 3; j < (l + 1) * 3; j++)
-								__physics2_fillProjection(pj2, axes2[j], points1 + k * 3, 3, points2 + l * 3, 3);
-						}
-					}
-				}
-			} else if (cc2) {
-				for (size_t l = 0; l < shape2.poly->triangle_count; l++) {
-					struct __physics2_projectionctx* pj1 = smalloc(sizeof(struct __physics2_projectionctx));
-					pctx.buf[pctx.bufi++].datum = pj1;
-					pj1->buf = smalloc(sizeof(union __physics2_branchprojdata) * (axes1_count + axes2_count));
-					pj1->bufi = 0;
-					pj1->mo = 0.;
-					pj1->mos = 0;
-					for (size_t j = 0; j < axes1_count; j++)
-						__physics2_fillProjection(pj1, axes1[j], points1, points1_count, points2 + l * 3, 3);
-					for (size_t j = l * 3; j < (l + 1) * 3; j++)
-						__physics2_fillProjection(pj1, axes2[j], points1, points1_count, points2 + l * 3, 3);
-				}
-			} else {
-				for (size_t j = 0; j < axes1_count; j++)
-					if (!__physics2_fillProjection(&pctx, axes1[j], points1, points1_count, points2, points2_count)) {
-						free(pctx.buf);
-						goto scont;
-					}
-				for (size_t j = 0; j < axes2_count; j++)
-					if (!__physics2_fillProjection(&pctx, axes2[j], points1, points1_count, points2, points2_count)) {
-						free(pctx.buf);
-						goto scont;
-					}
-			}
-			struct __physics2_triangle* tr1 = NULL;
-			struct __physics2_triangle* tr2 = NULL;
-			if (!__physics2_finishProjection(&pctx, axes1_count, axes2_count, shape, shape2, points1, points2, &tr1, &tr2)) {
-				free(pctx.buf);
-				goto scont;
-			}
-			free(pctx.buf);
-			if (pctx.mos) {
-				if (ncc) {
-					if (ctx->sensorCollide != NULL) (ctx->sensorCollide)(ctx, shape, shape2);
-					continue;
-				}
-				if (vec2f_dot(pctx.smallest_axis, vec2f_sub(shape2.poly->loc, shape.poly->loc)) > 0.) {
-					//printf("invert iscircle = %i\n", shape.poly->type == PHYSICS2_CIRCLE);
-					pctx.smallest_axis = vec2f_scale(pctx.smallest_axis, -1.);
-				}
-				vec2f normal;
-				normal.x = pctx.smallest_axis.x;
-				normal.y = pctx.smallest_axis.y;
-				//printf("mo = %f  --- %f, %f\n", mo, normal.x, normal.y);
-				pctx.smallest_axis = vec2f_scale(pctx.smallest_axis, pctx.mo);
-				shape2.poly->loc = vec2f_sub(shape2.poly->loc, pctx.smallest_axis);
-				vec2f avg = __physics2_getCollisionPoint(pctx.smallest_axis, shape, shape2, tr1, tr2);
-				if (ctx->preCollide != NULL) (ctx->preCollide)(ctx, shape, shape2, avg);
-				/*
-				 if (shape.poly->type == PHYSICS2_CIRCLE) {
-				 avg = cpmax1;
-				 } else if (shape2.poly->type == PHYSICS2_CIRCLE) {
-				 avg = cpmax2;
-				 } else {
-				 avg.x = (cpmax2.x - cpmax1.x) / 2. + shape.poly->loc.x;
-				 avg.y = (cpmax2.y - cpmax1.y) / 2. + shape.poly->loc.y;
-				 }*/
-				//shape.poly->p1.x = avg.x;						//shape.poly->loc.x + smallest_axis.x * 100.; // avg.x; //(cpmax2.x - cpmax1.x) / 2. + shape.poly->loc.x;
-				//shape.poly->p1.y = avg.y;						//shape.poly->loc.y + smallest_axis.y * 100.; // avg.y; //(cpmax2.y - cpmax1.y) / 2. + shape.poly->loc.y;
-				//shape.poly->p2.x = cpmax2.x;
-				//shape.poly->p2.y = cpmax2.y;
-				//(a == 1 ? shape : shape2).rect->p2.x = ai;
-				//shape.poly->p3.x = cpmax1.x + shape.poly->loc.x * 2.;
-				//shape.poly->p3.y = -cpmax1.y + shape.poly->loc.y * 2.;
-				/*shape.poly->p1.x = cpmin1.x;
-				 shape.poly->p1.y = cpmin1.y;
-				 shape.poly->p2.x = cpmax1.x;
-				 shape.poly->p2.y = cpmax1.y;
-				 shape2.poly->p1.x = -cpmin2.x;
-				 shape2.poly->p1.y = -cpmin2.y;
-				 shape2.poly->p2.x = -cpmax2.x;
-				 shape2.poly->p2.y = -cpmax2.y;*/
-				//printf("<%f, %f> - %f, %f\n", shape.poly->loc.y + shape.poly->height / 2., shape2.poly->loc.y - shape2.poly->height / 2., smallest_axis.x, smallest_axis.y);
-				//
-				vec2f rap = vec2f_sub(avg, shape.poly->loc);
-				vec2f rbp = vec2f_sub(avg, shape2.poly->loc);
-				vec3f pt;
-				pt.x = rap.x;
-				pt.y = rap.y;
-				pt.z = 0.;
-				vec3f tmp;
-				tmp.z = shape.poly->rps;
-				vec2f tx;
-				tmp = vec3f_cross(tmp, pt);
-				tx.x = tmp.x;
-				tx.y = tmp.y;
-				vec2f vap1 = vec2f_add(shape.poly->vel, tx);
-				tmp.z = shape2.poly->rps;
-				pt.x = rbp.x;
-				pt.y = rbp.y;
-				pt.z = 0.;
-				tmp = vec3f_cross(tmp, pt);
-				tx.x = tmp.x;
-				tx.y = tmp.y;
-				vec2f vbp1 = vec2f_add(shape2.poly->vel, tx);
-				vec2f vab1 = vec2f_sub(vap1, vbp1);
-				float j = vec2f_dot(vec2f_scale(vab1, -(1 + (shape2.poly->elasticity > shape.poly->elasticity ? shape2.poly->elasticity : shape.poly->elasticity))), normal);
-				float dj = (1. / shape.poly->mass) + (1. / shape2.poly->mass);
-				vec3f t1;
-				t1.x = rap.x;
-				t1.y = rap.y;
-				t1.z = 0.;
-				vec3f t2;
-				t2.x = normal.x;
-				t2.y = normal.y;
-				t2.z = 0.;
-				vec3f dt = vec3f_cross(t1, t2);
-				if (shape.poly->moi > 0.) {
-					float sd = vec3f_dot(dt, dt);
-					dj += sd / shape.poly->moi;
-				}
-				t1.x = rbp.x;
-				t1.y = rbp.y;
-				t1.z = 0.;
-				dt = vec3f_cross(t1, t2);
-				if (shape2.poly->moi > 0.) {
-					float sd = vec3f_dot(dt, dt);
-					dj += sd / shape2.poly->moi;
-				}
-				//printf("dj = %f\n", j);
-				j /= dj;
-				//printf("pj = %f\n", j);
-				//printf("1 %f: %f, %f; %f, %f\n", j, shape.poly->vel.x, shape.poly->vel.y, shape2.poly->vel.x, shape2.poly->vel.y);
-				shape.poly->vel = vec2f_add(shape.poly->vel, vec2f_scale(normal, j / shape.poly->mass));
-				shape2.poly->vel = vec2f_sub(shape2.poly->vel, vec2f_scale(normal, j / shape2.poly->mass));
-				float frict = (shape2.poly->friction + shape.poly->friction) / 2.;
-				vec2f force = vec2f_scale(vec2f_project(shape.poly->vel, vec2f_perp(normal)), -frict * shape.poly->mass);
-				physics2_applyForce(shape, force, avg);
-				vec2f force2 = vec2f_scale(vec2f_project(shape2.poly->vel, vec2f_perp(normal)), -frict * shape2.poly->mass);
-				physics2_applyForce(shape2, force2, avg);
-				//shape.poly->vel = vec2f_add(vec2f_scale(vec2f_project(shape.poly->vel, vec2f_perp(normal)), frict), vec2f_project(shape.poly->vel, normal));
-				//shape2.poly->vel = vec2f_add(vec2f_scale(vec2f_project(shape2.poly->vel, vec2f_perp(normal)), frict), vec2f_project(shape2.poly->vel, normal));
-				//printf("2 %f: %f, %f; %f, %f\n", j, shape.poly->vel.x, shape.poly->vel.y, shape2.poly->vel.x, shape2.poly->vel.y);
-				//printf("s1 moi = %f, s2 moi = %f\n", shape.poly->moi, shape2.poly->moi);
-				if (shape.poly->moi > 0.) {
-					t1.x = rap.x;
-					t1.y = rap.y;
-					t1.z = 0.;
-					vec3f rx = vec3f_cross(t1, vec3f_scale(t2, j));
-					shape.poly->rps += rx.z / shape.poly->moi;
-					//printf("sr1ps type = %i, rx.z = %f, moi = %f    ---   %f, %f\n", shape.poly->type, rx.z, shape.poly->moi, rap.x, rap.y);
-//printf("s1rps type = %i, rpsd = %f, trps = %f\n", shape.poly->type, -rx.z / shape.poly->moi, shape.poly->rps);
-				}
-				if (shape2.poly->moi > 0.) {
-					t1.x = rbp.x;
-					t1.y = rbp.y;
-					t1.z = 0.;
-					vec3f rx = vec3f_cross(t1, vec3f_scale(t2, j));
-					shape2.poly->rps -= rx.z / shape2.poly->moi;
-					//printf("sr2ps type = %i, rx.z = %f, moi = %f    ---   %f, %f\n", shape2.poly->type, rx.z, shape2.poly->moi, rbp.x, rbp.y);
-					//printf("s2rps type = %i, rpsd = %f, trps = %f\n", shape2.poly->type, rx.z / shape2.poly->moi, shape2.poly->rps);
-				}
-				if (ctx->postCollide != NULL) (ctx->postCollide)(ctx, shape, shape2, avg);
-				//shape2.poly->vel.x = 0.;
-				//shape2.poly->vel.y = 0.;
-				//shape.poly->vel.x = 0.;
-				//shape.poly->vel.y = 0.;
-			}
-			//printf("collide <%f, %f> %f, %f vs <%f, %f> %f, %f\n", shape.poly->width, shape.poly->height, shape.poly->loc.x, shape.poly->loc.y, shape2.poly->width, shape2.poly->height, shape2.poly->loc.x, shape2.poly->loc.y);
-			continue;
-			scont: ;
+			__physics2_checkCollision(ctx, shape, shape2, shape.poly->loc, shape2.poly->loc, shape, shape2);
+			/*if (shape.poly->loc.x + shape.poly->radius < shape2.poly->loc.x - shape2.poly->radius || shape.poly->loc.x - shape.poly->radius > shape2.poly->loc.x + shape2.poly->radius || shape.poly->loc.y + shape.poly->radius < shape2.poly->loc.y - shape2.poly->radius || shape.poly->loc.y - shape.poly->radius > shape2.poly->loc.y + shape2.poly->radius) continue;
+			 int ncc = ctx->canCollide != NULL && !(ctx->canCollide)(ctx, shape, shape2);
+			 if (ncc && ctx->sensorCollide == NULL) continue;
+			 size_t axes1_count = 0;
+			 size_t axes2_count = 0;
+			 if (shape.poly->type == PHYSICS2_CIRCLE) {
+			 axes1_count = 1;
+			 } else if (shape.poly->type == PHYSICS2_POLY) {
+			 axes1_count = shape.poly->concave ? shape.poly->triangle_count * 3 : shape.poly->point_count;
+			 }
+			 if (shape2.poly->type == PHYSICS2_CIRCLE) {
+			 axes2_count = shape.poly->type == PHYSICS2_CIRCLE ? 0 : 1;
+			 } else if (shape2.poly->type == PHYSICS2_POLY) {
+			 axes2_count = shape2.poly->concave ? shape2.poly->triangle_count * 3 : shape2.poly->point_count;
+			 }
+			 vec2f axes1[axes1_count];
+			 if (axes1_count > 0) __physics2_fillAxis(shape, shape2, axes1, axes1_count, 0);
+			 vec2f axes2[axes2_count];
+			 if (axes2_count > 0) __physics2_fillAxis(shape2, shape, axes2, axes2_count, 0);
+			 size_t points1_count = shape.poly->type == PHYSICS2_POLY ? axes1_count : 2;
+			 vec2f points1[points1_count];
+			 vec2f t0;
+			 t0.x = 0.;
+			 t0.y = 0.;
+			 __physics2_getAdjustedGlobalPoints(shape, points1, t0, 1);
+			 size_t points2_count = shape2.poly->type == PHYSICS2_POLY ? axes2_count : 2;
+			 vec2f points2[points2_count];
+			 __physics2_getAdjustedGlobalPoints(shape2, points2, t0, 1);
+			 struct __physics2_projectionctx pctx;
+			 pctx.mo = 0.;
+			 pctx.mos = 0;
+			 pctx.bufi = 0;
+			 int cc = shape.poly->type == PHYSICS2_POLY && shape.poly->concave;
+			 int cc2 = shape2.poly->type == PHYSICS2_POLY && shape2.poly->concave;
+			 pctx.buf = smalloc(sizeof(union __physics2_branchprojdata) * (cc ? shape.poly->triangle_count : (cc2 ? shape2.poly->triangle_count : (axes1_count + axes2_count))));
+			 if (cc) {
+			 for (size_t k = 0; k < shape.poly->triangle_count; k++) {
+			 struct __physics2_projectionctx* pj1 = smalloc(sizeof(struct __physics2_projectionctx));
+			 pctx.buf[pctx.bufi++].datum = pj1;
+			 pj1->buf = smalloc(sizeof(union __physics2_branchprojdata) * (cc2 ? shape2.poly->triangle_count : (axes1_count + axes2_count)));
+			 pj1->bufi = 0;
+			 pj1->mo = 0.;
+			 pj1->mos = 0;
+			 if (!cc2) {
+			 for (size_t j = k * 3; j < (k + 1) * 3; j++)
+			 __physics2_fillProjection(pj1, axes1[j], points1 + k * 3, 3, points2, points2_count);
+			 for (size_t j = 0; j < axes2_count; j++)
+			 __physics2_fillProjection(pj1, axes2[j], points1 + k * 3, 3, points2, points2_count);
+			 } else {
+			 for (size_t l = 0; l < shape2.poly->triangle_count; l++) {
+			 struct __physics2_projectionctx* pj2 = smalloc(sizeof(struct __physics2_projectionctx));
+			 pj1->buf[pj1->bufi++].datum = pj2;
+			 pj2->buf = smalloc(sizeof(union __physics2_branchprojdata) * (axes1_count + axes2_count));
+			 pj2->bufi = 0;
+			 pj2->mo = 0.;
+			 pj2->mos = 0;
+			 for (size_t j = k * 3; j < (k + 1) * 3; j++)
+			 __physics2_fillProjection(pj2, axes1[j], points1 + k * 3, 3, points2 + l * 3 + l, 3);
+			 for (size_t j = l * 3; j < (l + 1) * 3; j++)
+			 __physics2_fillProjection(pj2, axes2[j], points1 + k * 3, 3, points2 + l * 3, 3);
+			 }
+			 }
+			 }
+			 } else if (cc2) {
+			 for (size_t l = 0; l < shape2.poly->triangle_count; l++) {
+			 struct __physics2_projectionctx* pj1 = smalloc(sizeof(struct __physics2_projectionctx));
+			 pctx.buf[pctx.bufi++].datum = pj1;
+			 pj1->buf = smalloc(sizeof(union __physics2_branchprojdata) * (axes1_count + axes2_count));
+			 pj1->bufi = 0;
+			 pj1->mo = 0.;
+			 pj1->mos = 0;
+			 for (size_t j = 0; j < axes1_count; j++)
+			 __physics2_fillProjection(pj1, axes1[j], points1, points1_count, points2 + l * 3, 3);
+			 for (size_t j = l * 3; j < (l + 1) * 3; j++)
+			 __physics2_fillProjection(pj1, axes2[j], points1, points1_count, points2 + l * 3, 3);
+			 }
+			 } else {
+			 for (size_t j = 0; j < axes1_count; j++)
+			 if (!__physics2_fillProjection(&pctx, axes1[j], points1, points1_count, points2, points2_count)) {
+			 free(pctx.buf);
+			 goto scont;
+			 }
+			 for (size_t j = 0; j < axes2_count; j++)
+			 if (!__physics2_fillProjection(&pctx, axes2[j], points1, points1_count, points2, points2_count)) {
+			 free(pctx.buf);
+			 goto scont;
+			 }
+			 }
+			 struct __physics2_triangle* tr1 = NULL;
+			 struct __physics2_triangle* tr2 = NULL;
+			 if (!__physics2_finishProjection(&pctx, axes1_count, axes2_count, shape, shape2, points1, points2, &tr1, &tr2)) {
+			 free(pctx.buf);
+			 goto scont;
+			 }
+			 free(pctx.buf);
+			 if (pctx.mos) {
+			 if (ncc) {
+			 if (ctx->sensorCollide != NULL) (ctx->sensorCollide)(ctx, shape, shape2);
+			 continue;
+			 }
+			 if (vec2f_dot(pctx.smallest_axis, vec2f_sub(shape2.poly->loc, shape.poly->loc)) > 0.) {
+			 //printf("invert iscircle = %i\n", shape.poly->type == PHYSICS2_CIRCLE);
+			 pctx.smallest_axis = vec2f_scale(pctx.smallest_axis, -1.);
+			 }
+			 vec2f normal;
+			 normal.x = pctx.smallest_axis.x;
+			 normal.y = pctx.smallest_axis.y;
+			 //printf("mo = %f  --- %f, %f\n", mo, normal.x, normal.y);
+			 pctx.smallest_axis = vec2f_scale(pctx.smallest_axis, pctx.mo);
+			 shape2.poly->loc = vec2f_sub(shape2.poly->loc, pctx.smallest_axis);
+			 vec2f avg = __physics2_getCollisionPoint(pctx.smallest_axis, shape, shape2, tr1, tr1 == NULL ? 0 : 3, tr2, tr2 == NULL ? 0 : 3);
+			 if (ctx->preCollide != NULL) (ctx->preCollide)(ctx, shape, shape2, avg);
+			 /*
+			 if (shape.poly->type == PHYSICS2_CIRCLE) {
+			 avg = cpmax1;
+			 } else if (shape2.poly->type == PHYSICS2_CIRCLE) {
+			 avg = cpmax2;
+			 } else {
+			 avg.x = (cpmax2.x - cpmax1.x) / 2. + shape.poly->loc.x;
+			 avg.y = (cpmax2.y - cpmax1.y) / 2. + shape.poly->loc.y;
+			 }*/
+			//shape.poly->p1.x = avg.x;						//shape.poly->loc.x + smallest_axis.x * 100.; // avg.x; //(cpmax2.x - cpmax1.x) / 2. + shape.poly->loc.x;
+			//shape.poly->p1.y = avg.y;						//shape.poly->loc.y + smallest_axis.y * 100.; // avg.y; //(cpmax2.y - cpmax1.y) / 2. + shape.poly->loc.y;
+			//shape.poly->p2.x = cpmax2.x;
+			//shape.poly->p2.y = cpmax2.y;
+			//(a == 1 ? shape : shape2).rect->p2.x = ai;
+			//shape.poly->p3.x = cpmax1.x + shape.poly->loc.x * 2.;
+			//shape.poly->p3.y = -cpmax1.y + shape.poly->loc.y * 2.;
+			/*shape.poly->p1.x = cpmin1.x;
+			 shape.poly->p1.y = cpmin1.y;
+			 shape.poly->p2.x = cpmax1.x;
+			 shape.poly->p2.y = cpmax1.y;
+			 shape2.poly->p1.x = -cpmin2.x;
+			 shape2.poly->p1.y = -cpmin2.y;
+			 shape2.poly->p2.x = -cpmax2.x;
+			 shape2.poly->p2.y = -cpmax2.y;* /
+			 //printf("<%f, %f> - %f, %f\n", shape.poly->loc.y + shape.poly->height / 2., shape2.poly->loc.y - shape2.poly->height / 2., smallest_axis.x, smallest_axis.y);
+			 //
+			 vec2f rap = vec2f_sub(avg, shape.poly->loc);
+			 vec2f rbp = vec2f_sub(avg, shape2.poly->loc);
+			 vec3f pt;
+			 pt.x = rap.x;
+			 pt.y = rap.y;
+			 pt.z = 0.;
+			 vec3f tmp;
+			 tmp.z = shape.poly->rps;
+			 vec2f tx;
+			 tmp = vec3f_cross(tmp, pt);
+			 tx.x = tmp.x;
+			 tx.y = tmp.y;
+			 vec2f vap1 = vec2f_add(shape.poly->vel, tx);
+			 tmp.z = shape2.poly->rps;
+			 pt.x = rbp.x;
+			 pt.y = rbp.y;
+			 pt.z = 0.;
+			 tmp = vec3f_cross(tmp, pt);
+			 tx.x = tmp.x;
+			 tx.y = tmp.y;
+			 vec2f vbp1 = vec2f_add(shape2.poly->vel, tx);
+			 vec2f vab1 = vec2f_sub(vap1, vbp1);
+			 float j = vec2f_dot(vec2f_scale(vab1, -(1 + (shape2.poly->elasticity > shape.poly->elasticity ? shape2.poly->elasticity : shape.poly->elasticity))), normal);
+			 float dj = (1. / shape.poly->mass) + (1. / shape2.poly->mass);
+			 vec3f t1;
+			 t1.x = rap.x;
+			 t1.y = rap.y;
+			 t1.z = 0.;
+			 vec3f t2;
+			 t2.x = normal.x;
+			 t2.y = normal.y;
+			 t2.z = 0.;
+			 vec3f dt = vec3f_cross(t1, t2);
+			 if (shape.poly->moi > 0.) {
+			 float sd = vec3f_dot(dt, dt);
+			 dj += sd / shape.poly->moi;
+			 }
+			 t1.x = rbp.x;
+			 t1.y = rbp.y;
+			 t1.z = 0.;
+			 dt = vec3f_cross(t1, t2);
+			 if (shape2.poly->moi > 0.) {
+			 float sd = vec3f_dot(dt, dt);
+			 dj += sd / shape2.poly->moi;
+			 }
+			 //printf("dj = %f\n", j);
+			 j /= dj;
+			 //printf("pj = %f\n", j);
+			 //printf("1 %f: %f, %f; %f, %f\n", j, shape.poly->vel.x, shape.poly->vel.y, shape2.poly->vel.x, shape2.poly->vel.y);
+			 shape.poly->vel = vec2f_add(shape.poly->vel, vec2f_scale(normal, j / shape.poly->mass));
+			 shape2.poly->vel = vec2f_sub(shape2.poly->vel, vec2f_scale(normal, j / shape2.poly->mass));
+			 float frict = (shape2.poly->friction + shape.poly->friction) / 2.;
+			 vec2f force = vec2f_scale(vec2f_project(shape.poly->vel, vec2f_perp(normal)), -frict * shape.poly->mass);
+			 physics2_applyForce(shape, force, avg);
+			 vec2f force2 = vec2f_scale(vec2f_project(shape2.poly->vel, vec2f_perp(normal)), -frict * shape2.poly->mass);
+			 physics2_applyForce(shape2, force2, avg);
+			 //shape.poly->vel = vec2f_add(vec2f_scale(vec2f_project(shape.poly->vel, vec2f_perp(normal)), frict), vec2f_project(shape.poly->vel, normal));
+			 //shape2.poly->vel = vec2f_add(vec2f_scale(vec2f_project(shape2.poly->vel, vec2f_perp(normal)), frict), vec2f_project(shape2.poly->vel, normal));
+			 //printf("2 %f: %f, %f; %f, %f\n", j, shape.poly->vel.x, shape.poly->vel.y, shape2.poly->vel.x, shape2.poly->vel.y);
+			 //printf("s1 moi = %f, s2 moi = %f\n", shape.poly->moi, shape2.poly->moi);
+			 if (shape.poly->moi > 0.) {
+			 t1.x = rap.x;
+			 t1.y = rap.y;
+			 t1.z = 0.;
+			 vec3f rx = vec3f_cross(t1, vec3f_scale(t2, j));
+			 shape.poly->rps += rx.z / shape.poly->moi;
+			 //printf("sr1ps type = %i, rx.z = %f, moi = %f    ---   %f, %f\n", shape.poly->type, rx.z, shape.poly->moi, rap.x, rap.y);
+			 //printf("s1rps type = %i, rpsd = %f, trps = %f\n", shape.poly->type, -rx.z / shape.poly->moi, shape.poly->rps);
+			 }
+			 if (shape2.poly->moi > 0.) {
+			 t1.x = rbp.x;
+			 t1.y = rbp.y;
+			 t1.z = 0.;
+			 vec3f rx = vec3f_cross(t1, vec3f_scale(t2, j));
+			 shape2.poly->rps -= rx.z / shape2.poly->moi;
+			 //printf("sr2ps type = %i, rx.z = %f, moi = %f    ---   %f, %f\n", shape2.poly->type, rx.z, shape2.poly->moi, rbp.x, rbp.y);
+			 //printf("s2rps type = %i, rpsd = %f, trps = %f\n", shape2.poly->type, rx.z / shape2.poly->moi, shape2.poly->rps);
+			 }
+			 if (ctx->postCollide != NULL) (ctx->postCollide)(ctx, shape, shape2, avg);
+			 //shape2.poly->vel.x = 0.;
+			 //shape2.poly->vel.y = 0.;
+			 //shape.poly->vel.x = 0.;
+			 //shape.poly->vel.y = 0.;
+			 }
+			 //printf("collide <%f, %f> %f, %f vs <%f, %f> %f, %f\n", shape.poly->width, shape.poly->height, shape.poly->loc.x, shape.poly->loc.y, shape2.poly->width, shape2.poly->height, shape2.poly->loc.x, shape2.poly->loc.y);
+			 continue;
+			 scont: ;*/
 		}
 	}
 }

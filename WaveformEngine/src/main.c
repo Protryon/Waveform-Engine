@@ -187,9 +187,21 @@ void main_init() {
 	 pts[4].y = 100.;
 	 pts[5].x = 200.;
 	 pts[5].y = 100.;*/
-	union physics2_shape shape4 = physics2_newPoly(pts, 5, 1);
+	union physics2_shape shape4_1 = physics2_newPoly(pts, 5, 1);
+	physics2_setMassByArea(shape4_1, 1.);
+	shape4_1.poly->ploc.x = shape4_1.poly->loc.x = 0.;
+	shape4_1.poly->ploc.y = shape4_1.poly->loc.y = 0.;
+	shape4_1.poly->vel.x = 0.;
+	shape4_1.poly->vel.y = 0.;
+	physics2_adjustCOM(shape4_1);
+	physics2_calculateMOI(shape4_1);
+	physics2_triangulate(shape4_1.poly);
+	union physics2_shape* complist = smalloc(sizeof(union physics2_shape) * 1);
+	complist[0] = shape4_1;
 	//union physics2_shape shape4 = physics2_newIsoscelesTriangle(180., 150.);
 	//union physics2_shape shape4 = physics2_newRegularPolygon(100., 2);
+	union physics2_shape shape4 = physics2_newCompound(complist, 1);
+
 	physics2_addShape(pctx, shape4);
 	//shape4.poly->mass = 15000.;
 	physics2_setMassByArea(shape4, 1.);
@@ -201,7 +213,7 @@ void main_init() {
 	shape4.poly->vel.y = 3.;
 	physics2_adjustCOM(shape4);
 	physics2_calculateMOI(shape4);
-	physics2_triangulate(shape4.poly);
+	//physics2_triangulate(shape4_1.poly);
 //shape2.poly->rps = .02;
 	//shape2.poly->rot = 2;
 	wall1 = physics2_newRect(width + 100., 100.);
