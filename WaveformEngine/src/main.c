@@ -196,11 +196,21 @@ void main_init() {
 	physics2_adjustCOM(shape4_1);
 	physics2_calculateMOI(shape4_1);
 	physics2_triangulate(shape4_1.poly);
-	union physics2_shape* complist = smalloc(sizeof(union physics2_shape) * 1);
+	union physics2_shape shape4_2 = physics2_newPoly(pts, 5, 1);
+	physics2_setMassByArea(shape4_2, 1.);
+	shape4_2.poly->ploc.x = shape4_2.poly->loc.x = 150.;
+	shape4_2.poly->ploc.y = shape4_2.poly->loc.y = 300.;
+	shape4_2.poly->vel.x = 0.;
+	shape4_2.poly->vel.y = 0.;
+	physics2_adjustCOM(shape4_2);
+	physics2_calculateMOI(shape4_2);
+	physics2_triangulate(shape4_2.poly);
+	union physics2_shape* complist = smalloc(sizeof(union physics2_shape) * 2);
 	complist[0] = shape4_1;
+	complist[1] = shape4_2;
 	//union physics2_shape shape4 = physics2_newIsoscelesTriangle(180., 150.);
 	//union physics2_shape shape4 = physics2_newRegularPolygon(100., 2);
-	union physics2_shape shape4 = physics2_newCompound(complist, 1);
+	union physics2_shape shape4 = physics2_newCompound(complist, 2);
 
 	physics2_addShape(pctx, shape4);
 	//shape4.poly->mass = 15000.;
@@ -274,7 +284,9 @@ void displayCallback() {
 		//printf("FPS: %f\n", (float) frames / (t / 1000.));
 		frames = 0;
 	}
-	float partialTick = ((ms2 - __main_lt) / 50.);
+	//printf("%f - %f / %f = %f / %f = %f\n", ms2, __main_lt, (1000. / (float) tps), ms2 - __main_lt, (1000. / (float) tps), ((ms2 - __main_lt) / (1000. / (float) tps)));
+	float partialTick = ((ms2 - __main_lt) / (1000. / (float) tps));
+	//printf("%f - %f\n", partialTick, ms2);
 	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 	__gui_render(partialTick);
 	size_t error = glGetError();

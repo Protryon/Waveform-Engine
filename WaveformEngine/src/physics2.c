@@ -92,6 +92,7 @@ union physics2_shape physics2_newCompound(union physics2_shape* shapes, size_t s
 	rect->subshape_count = shape_count;
 	rect->radius = 0.;
 	for (size_t i = 0; i < rect->subshape_count; i++) {
+		rect->subshapes[i].poly->parent = shape;
 		float len = sqrt(rect->subshapes[i].poly->loc.x * rect->subshapes[i].poly->loc.x + rect->subshapes[i].poly->loc.y * rect->subshapes[i].poly->loc.y);
 		len += rect->subshapes[i].poly->radius;
 		if (len > rect->radius) rect->radius = len;
@@ -335,8 +336,8 @@ void physics2_adjustCOM(union physics2_shape shape) {
 			yc += shape.compound->subshapes[i].poly->loc.y * shape.compound->subshapes[i].poly->mass / shape.compound->mass;
 		}
 		for (size_t i = 0; i < shape.compound->subshape_count; i++) {
-			shape.compound->subshapes[i].poly->loc.x -= xc;
-			shape.compound->subshapes[i].poly->loc.y -= yc;
+			shape.compound->subshapes[i].poly->ploc.x = shape.compound->subshapes[i].poly->loc.x -= xc;
+			shape.compound->subshapes[i].poly->ploc.y = shape.compound->subshapes[i].poly->loc.y -= yc;
 		}
 	}
 }
@@ -454,7 +455,10 @@ void physics2_drawShape(union physics2_shape shape, float partialTick) {
 	//glVertex2f(0., 0.);
 	//glVertex2f(shape.poly->p1.x, shape.poly->p1.y);
 	//glEnd();
-	vec2f iloc = physics2_getInterpolatedPosition(shape, partialTick);
+	//todo fix interpolation
+	vec2f iloc = physics2_getInterpolatedPosition(shape, 0.);
+	//printf("%f\n", partialTick);
+	//printf("%f, %f vs %f, %f - %f, %f\n", iloc.x, iloc.y, shape.poly->loc.x, shape.poly->loc.y, shape.poly->ploc.x, shape.poly->ploc.y);
 	glPushMatrix();
 	glTranslatef(iloc.x, iloc.y, 0.);
 	/*glBegin(GL_LINES);
@@ -474,7 +478,7 @@ void physics2_drawShape(union physics2_shape shape, float partialTick) {
 	 glVertex2f(yproj.x * 100., yproj.y * 100.);
 	 glEnd();*/
 	//glColor4f(1., 0., 0., 1.);
-	glRotatef(360. * physics2_getInterpolatedRotation(shape, partialTick) / (M_PI * 2.), 0., 0., 1.);
+	glRotatef(360. * physics2_getInterpolatedRotation(shape, 0.) / (M_PI * 2.), 0., 0., 1.);
 	if (shape.poly->type == PHYSICS2_CIRCLE) {
 		glBegin (GL_TRIANGLE_FAN);
 		glVertex2f(0., 0.);
@@ -900,9 +904,9 @@ void __physics2_checkCollision(struct physics2_ctx* ctx, union physics2_shape sh
 			float nx = rloc.x * c2 - rloc.y * s2;
 			rloc.y = rloc.y * c2 + rloc.x * s2;
 			rloc.x = nx;
-			shift = vec2f_add(rloc, shift);
-			//printf("2. %f, %f\n", shift.x, shift.y);
-			__physics2_checkCollision(ctx, ps, shape2, shift, shift2, shape_velmaster, shape2_velmaster);
+			vec2f nsh1 = vec2f_add(rloc, shift);
+			//printf("2. %f, %f\n", nsh1.x, nsh1.y);
+			__physics2_checkCollision(ctx, ps, shape2, nsh1, shift2, shape_velmaster, shape2_velmaster);
 		}
 		return;
 	} else if (shape2.compound->type == PHYSICS2_COMPOUND) {
@@ -918,8 +922,8 @@ void __physics2_checkCollision(struct physics2_ctx* ctx, union physics2_shape sh
 			float nx = rloc.x * c2 - rloc.y * s2;
 			rloc.y = rloc.y * c2 + rloc.x * s2;
 			rloc.x = nx;
-			shift2 = vec2f_add(rloc, shift2);
-			__physics2_checkCollision(ctx, shape, ps2, shift, shift2, shape_velmaster, shape2_velmaster);
+			vec2f nsh2 = vec2f_add(rloc, shift2);
+			__physics2_checkCollision(ctx, shape, ps2, shift, nsh2, shape_velmaster, shape2_velmaster);
 		}
 		return;
 	} else if (shape.compound->type == PHYSICS2_COMPOUND && shape2.compound->type == PHYSICS2_COMPOUND) {
@@ -935,7 +939,7 @@ void __physics2_checkCollision(struct physics2_ctx* ctx, union physics2_shape sh
 				float nx = rloc.x * c2 - rloc.y * s2;
 				rloc.y = rloc.y * c2 + rloc.x * s2;
 				rloc.x = nx;
-				shift = vec2f_add(rloc, shift);
+				vec2f nsh1 = vec2f_add(rloc, shift);
 				union physics2_shape ps2 = shape2.compound->subshapes[i];
 				c2 = cosf(shape2.poly->rot);
 				s2 = sinf(shape2.poly->rot);
@@ -944,8 +948,8 @@ void __physics2_checkCollision(struct physics2_ctx* ctx, union physics2_shape sh
 				nx = rloc.x * c2 - rloc.y * s2;
 				rloc.y = rloc.y * c2 + rloc.x * s2;
 				rloc.x = nx;
-				shift2 = vec2f_add(rloc, shift2);
-				__physics2_checkCollision(ctx, ps, ps2, shift, shift2, shape_velmaster, shape2_velmaster);
+				vec2f nsh2 = vec2f_add(rloc, shift2);
+				__physics2_checkCollision(ctx, ps, ps2, nsh1, nsh2, shape_velmaster, shape2_velmaster);
 			}
 		}
 		return;
