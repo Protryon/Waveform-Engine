@@ -1,2 +1,3 @@
 WaveformEngine
+src/*.d
 src/*.o
