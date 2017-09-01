@@ -18,6 +18,8 @@ C_SRCS += \
 ../src/vector.c \
 ../src/waveform.c \
 ../src/wincompat.c \
+../src/hashmap.c \
+../src/manip.c \
 ../src/xstring.c 
 
 OBJS += \
@@ -35,6 +37,8 @@ OBJS += \
 ./src/vector.o \
 ./src/waveform.o \
 ./src/wincompat.o \
+./src/hashmap.o \
+./src/manip.o \
 ./src/xstring.o 
 
 C_DEPS += \
@@ -52,6 +56,8 @@ C_DEPS += \
 ./src/vector.d \
 ./src/waveform.d \
 ./src/wincompat.d \
+./src/hashmap.d \
+./src/manip.d \
 ./src/xstring.d 
 
 
